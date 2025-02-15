@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use crate::error::{ErrorKind, ParserError};
-use crate::gemtext::gemtext_body::{GemTextBody, MimeType};
+use crate::gemtext::gemtext_body::{MimeType};
 use crate::gemini_protocol::response::{OkResponse, Response};
 use crate::gemtext::parse_gemtext;
 
@@ -10,7 +10,6 @@ pub(super) struct Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
-    /// reply    = input / success / redirect / tempfail / permfail / auth
     pub(super) fn reply(&mut self) -> Result<Response, ParserError> {
         let c = self.eat_char()?;
         match c {
@@ -34,7 +33,7 @@ impl<'a> Parser<'a> {
         match c {
             0 => Ok(Response::MustPromptForInput(prompt)),
             1 => Ok(Response::MustPromptSensitiveInput(prompt)),
-            c => Err(self.make_err(ErrorKind::InvalidStatus((c + 10) as usize))),
+            c => Err(self.make_err(ErrorKind::InvalidStatus((10 + c) as usize))),
         }
     }
 
@@ -45,7 +44,7 @@ impl<'a> Parser<'a> {
         let mimetype = self.mimetype()?;
 
         if self.peek() != '\n' {
-            return Err(self.make_err(ErrorKind::Syntax("expected newline".to_string())));
+            return Err(self.make_err(ErrorKind::SyntaxMissingNewline));
         }
 
         self.eat_char()?;
@@ -67,7 +66,7 @@ impl<'a> Parser<'a> {
         match c {
             0 => Ok(Response::TemporaryRedirect(url)),
             1 => Ok(Response::PermanentRedirect(url)),
-            c => Err(self.make_err(ErrorKind::InvalidStatus((c + 30) as usize))),
+            c => Err(self.make_err(ErrorKind::InvalidStatus((30 + c) as usize))),
         }
     }
 
@@ -81,7 +80,7 @@ impl<'a> Parser<'a> {
             2 => Ok(Response::CGIError(msg)),
             3 => Ok(Response::ProxyError(msg)),
             4 => Ok(Response::SlowDown(msg)),
-            c => Err(self.make_err(ErrorKind::InvalidStatus((c + 40) as usize))),
+            c => Err(self.make_err(ErrorKind::InvalidStatus((40 + c) as usize))),
         }
     }
 
@@ -95,7 +94,7 @@ impl<'a> Parser<'a> {
             2 => Ok(Response::ResourceGone(msg)),
             3 => Ok(Response::ProxyRequestRefused(msg)),
             9 => Ok(Response::BadRequest(msg)),
-            c => Err(self.make_err(ErrorKind::InvalidStatus((c + 50) as usize))),
+            c => Err(self.make_err(ErrorKind::InvalidStatus((50 + c) as usize))),
         }
     }
 
@@ -107,12 +106,12 @@ impl<'a> Parser<'a> {
             0 => Ok(Response::CertificateRequired(msg)),
             1 => Ok(Response::CertificateNotAuthorized(msg)),
             2 => Ok(Response::CertificateNotValid(msg)),
-            c => Err(self.make_err(ErrorKind::InvalidStatus((c + 60) as usize))),
+            c => Err(self.make_err(ErrorKind::InvalidStatus((60 + c) as usize))),
         }
     }
 
     fn eat_char(&mut self) -> Result<char, ParserError> {
-        let c = self.iter.next().ok_or(self.make_err(ErrorKind::Syntax("expected more data".to_string())))?;
+        let c = self.iter.next().ok_or(self.make_err(ErrorKind::SyntaxExpectedData))?;
 
         if c == '\n' {
             self.line += 1;
@@ -124,7 +123,7 @@ impl<'a> Parser<'a> {
     fn eat_digit(&mut self) -> Result<u32, ParserError> {
         let c = self.eat_char()?;
 
-        c.to_digit(10).ok_or(self.make_err(ErrorKind::Syntax("expected digit".to_string())))
+        c.to_digit(10).ok_or(self.make_err(ErrorKind::InvalidDigit))
     }
 
     fn eat_until_crlf(&mut self) -> String {
@@ -165,7 +164,7 @@ impl<'a> Parser<'a> {
     fn eat_sp(&mut self) -> Result<(), ParserError> {
         let c = self.eat_char()?;
         if c != ' ' {
-            return Err(self.make_err(ErrorKind::Syntax("expected space".to_string())));
+            return Err(self.make_err(ErrorKind::SyntaxMissingSpace));
         }
         Ok(())
     }
@@ -212,7 +211,7 @@ impl<'a> Parser<'a> {
                 let key = parts.next()?.trim();
                 let value = parts.next()?.trim();
 
-                // Parameters other than "charset" and "lang" are undefined and clients MUST ignore any such paramters.
+                // Parameters other than "charset" and "lang" are undefined and clients MUST ignore any such parameters.
                 if key != "charset" && key != "lang" {
                     return None;
                 }
@@ -254,26 +253,24 @@ mod tests {
         Ok(())
     }
 
-    // #[test]
-    // fn test_twenty() -> Result<(), ParserError> {
-    //     let resp = "20 text/gemini\r\nHello, World!\nSomeData\n";
-    //
-    //     let r = parse_response(resp)?;
-    //
-    //     assert_eq!(r, Response::Success(OkResponse {
-    //         mime: MimeType {
-    //             typ: "text".to_string(),
-    //             sub: "gemini".to_string(),
-    //             parameters: None,
-    //         },
-    //         body: GemTextBody {
-    //             body: "Hello, World!\nSomeData\n".to_string(),
-    //         }
-    //     }));
-    //
-    //     Ok(())
-    // }
-    //
+    #[test]
+    fn test_twenty() -> Result<(), ParserError> {
+        let resp = "20 text/gemini\r\nHello, World!\nSomeData\n";
+
+        let r = parse_response(resp)?;
+
+        if let Response::Success(OkResponse { mime, body }) = r {
+            assert_eq!(mime.typ, "text");
+            assert_eq!(mime.sub, "gemini");
+            assert_eq!(mime.parameters.is_none(), true);
+            assert_eq!(body.0.len(), 2);
+        } else {
+            panic!("expected success response");
+        }
+
+        Ok(())
+    }
+
     #[test]
     fn test_mimetype() -> Result<(), ParserError> {
         let resp = "20 text/gemini; lang=zh-CN; charset=utf-8\r\n";
@@ -290,6 +287,70 @@ mod tests {
             assert_eq!(params.get("charset").unwrap(), "utf-8");
         } else {
             panic!("expected success response");
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_err_syntax_expected_data() -> Result<(), ParserError> {
+        let cases = vec!["", "2"];
+
+        for case in cases {
+            let r = parse_response(case);
+            assert_eq!(r.is_err(), true);
+            assert_eq!(r.err() == Some(ParserError {
+                line: 1,
+                kind: ErrorKind::SyntaxExpectedData,
+            }), true);
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_syntax_missing_newline() -> Result<(), ParserError> {
+        let cases = vec!["20 text/gemini Hello, World!"];
+
+        for case in cases {
+            let r = parse_response(case);
+            assert_eq!(r.is_err(), true);
+            assert_eq!(r.err() == Some(ParserError {
+                line: 1,
+                kind: ErrorKind::SyntaxMissingNewline,
+            }), true);
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_syntax_missing_space() -> Result<(), ParserError> {
+        let cases = vec!["20text/gemini\r\n"];
+
+        for case in cases {
+            let r = parse_response(case);
+            assert_eq!(r.is_err(), true);
+            assert_eq!(r.err() == Some(ParserError {
+                line: 1,
+                kind: ErrorKind::SyntaxMissingSpace,
+            }), true);
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_invalid_digit() -> Result<(), ParserError> {
+        let cases = vec!["2a0 text/gemini\r\n"];
+
+        for case in cases {
+            let r = parse_response(case);
+            assert_eq!(r.is_err(), true);
+            assert_eq!(r.err() == Some(ParserError {
+                line: 1,
+                kind: ErrorKind::InvalidDigit,
+            }), true);
         }
 
         Ok(())

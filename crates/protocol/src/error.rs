@@ -1,18 +1,21 @@
 use std::fmt::{Display, Formatter};
 use crate::gemtext::GemTextError;
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub struct ParserError {
     pub line: usize,
     pub kind: ErrorKind,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum ErrorKind {
     MissingStatus,
     InvalidStatus(usize),
-    Syntax(String),
     InvalidBody(GemTextError),
+    SyntaxExpectedData,
+    SyntaxMissingNewline,
+    SyntaxMissingSpace,
+    InvalidDigit,
 }
 
 impl Display for ParserError {
@@ -26,8 +29,11 @@ impl Display for ErrorKind {
         match self {
             ErrorKind::MissingStatus => write!(f, "missing status code"),
             ErrorKind::InvalidStatus(s) => write!(f, "invalid status code: {}", s),
-            ErrorKind::Syntax(s) => write!(f, "syntax error: {}", s),
             ErrorKind::InvalidBody(e) => write!(f, "invalid body: {}", e),
+            ErrorKind::SyntaxExpectedData => write!(f, "expected data"),
+            ErrorKind::SyntaxMissingNewline => write!(f, "missing newline"),
+            ErrorKind::SyntaxMissingSpace => write!(f, "missing space"),
+            ErrorKind::InvalidDigit => write!(f, "invalid digit"),
         }
     }
 }
