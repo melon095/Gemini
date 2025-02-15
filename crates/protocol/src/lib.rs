@@ -1,3 +1,3 @@
-pub mod parser;
-pub mod response;
-pub mod body;
+pub mod gemtext;
+pub mod error;
+pub mod gemini_protocol;

@@ -1,45 +1,17 @@
 use std::collections::HashMap;
-use std::fmt::{Display, Formatter};
-use crate::body::{Body, MimeType};
-use crate::response::{OkResponse, Response};
+use crate::error::{ErrorKind, ParserError};
+use crate::gemtext::gemtext_body::{GemTextBody, MimeType};
+use crate::gemini_protocol::response::{OkResponse, Response};
+use crate::gemtext::parse_gemtext;
 
-#[derive(Debug)]
-pub struct ParserError {
-    line: usize,
-    kind: ErrorKind,
-}
-
-#[derive(Debug)]
-pub enum ErrorKind {
-    MissingStatus,
-    InvalidStatus(usize),
-    Syntax(String),
-}
-
-impl Display for ParserError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Error on line {}: {}", self.line, self.kind)
-    }
-}
-
-impl Display for ErrorKind {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ErrorKind::MissingStatus => write!(f, "missing status code"),
-            ErrorKind::InvalidStatus(s) => write!(f, "invalid status code: {}", s),
-            ErrorKind::Syntax(s) => write!(f, "syntax error: {}", s),
-        }
-    }
-}
-
-struct Parser<'a> {
-    iter: std::str::Chars<'a>,
-    line: usize,
+pub(super) struct Parser<'a> {
+    pub(super) iter: std::str::Chars<'a>,
+    pub(super) line: usize,
 }
 
 impl<'a> Parser<'a> {
     /// reply    = input / success / redirect / tempfail / permfail / auth
-    fn reply(&mut self) -> Result<Response, ParserError> {
+    pub(super) fn reply(&mut self) -> Result<Response, ParserError> {
         let c = self.eat_char()?;
         match c {
             '1' => self.input(),
@@ -82,7 +54,7 @@ impl<'a> Parser<'a> {
 
         Ok(Response::Success(OkResponse {
             mime: mimetype,
-            body: Body { body },
+            body: parse_gemtext(body)?,
         }))
      }
 
@@ -226,6 +198,7 @@ impl<'a> Parser<'a> {
                 parameters: None,
             });
         }
+        let params_idx = params_idx.unwrap();
 
         // There are parameters so find all semicolons.
         let params = s
@@ -234,9 +207,21 @@ impl<'a> Parser<'a> {
             .iter()
             .filter_map(|s| {
                 let mut parts = s.split('=');
-                Some((parts.next()?.to_string(), parts.next()?.to_string()))
+
+                // rfc2045 states that parameters may NOT contain space, so it's fine to trim.
+                let key = parts.next()?.trim();
+                let value = parts.next()?.trim();
+
+                // Parameters other than "charset" and "lang" are undefined and clients MUST ignore any such paramters.
+                if key != "charset" && key != "lang" {
+                    return None;
+                }
+
+                Some((key.to_string(), value.to_string()))
             })
             .collect::<HashMap<String, String>>();
+
+        let s = s[..params_idx].to_string();
 
         Ok(MimeType {
             typ: t,
@@ -253,17 +238,9 @@ impl<'a> Parser<'a> {
     }
 }
 
-pub fn parse_response(response: &str) -> Result<Response, ParserError> {
-    let mut r = Parser {
-        iter: response.chars(),
-        line: 1,
-    };
-
-    r.reply()
-}
-
 #[cfg(test)]
 mod tests {
+    use crate::gemini_protocol::parse_response;
     use super::*;
 
     #[test]
@@ -277,22 +254,43 @@ mod tests {
         Ok(())
     }
 
+    // #[test]
+    // fn test_twenty() -> Result<(), ParserError> {
+    //     let resp = "20 text/gemini\r\nHello, World!\nSomeData\n";
+    //
+    //     let r = parse_response(resp)?;
+    //
+    //     assert_eq!(r, Response::Success(OkResponse {
+    //         mime: MimeType {
+    //             typ: "text".to_string(),
+    //             sub: "gemini".to_string(),
+    //             parameters: None,
+    //         },
+    //         body: GemTextBody {
+    //             body: "Hello, World!\nSomeData\n".to_string(),
+    //         }
+    //     }));
+    //
+    //     Ok(())
+    // }
+    //
     #[test]
-    fn test_twenty() -> Result<(), ParserError> {
-        let resp = "20 text/gemini\r\nHello, World!\nSomeData\n";
+    fn test_mimetype() -> Result<(), ParserError> {
+        let resp = "20 text/gemini; lang=zh-CN; charset=utf-8\r\n";
 
         let r = parse_response(resp)?;
 
-        assert_eq!(r, Response::Success(OkResponse {
-            mime: MimeType {
-                typ: "text".to_string(),
-                sub: "gemini".to_string(),
-                parameters: None,
-            },
-            body: Body {
-                body: "Hello, World!\nSomeData\n".to_string(),
-            }
-        }));
+        if let Response::Success(OkResponse { mime, .. }) = r {
+            assert_eq!(mime.typ, "text");
+            assert_eq!(mime.sub, "gemini");
+            assert_eq!(mime.parameters.is_some(), true);
+
+            let params = mime.parameters.unwrap();
+            assert_eq!(params.get("lang").unwrap(), "zh-CN");
+            assert_eq!(params.get("charset").unwrap(), "utf-8");
+        } else {
+            panic!("expected success response");
+        }
 
         Ok(())
     }

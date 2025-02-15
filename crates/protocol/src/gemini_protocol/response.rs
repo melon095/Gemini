@@ -1,10 +1,10 @@
 use std::fmt::{Debug, Display, Formatter};
-use crate::body::{Body, MimeType};
+use crate::gemtext::gemtext_body::{GemTextBody, MimeType};
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct OkResponse {
     pub mime: MimeType,
-    pub body: Body,
+    pub body: GemTextBody,
 }
 
 // FIXME: Cow

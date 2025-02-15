@@ -1,10 +1,20 @@
 use std::collections::HashMap;
 use std::fmt::{Debug, Display, Formatter};
 
+// TODO: Pre format data should be baked into lines
 #[derive(Debug, Eq, PartialEq)]
-pub struct Body {
-    pub body: String // FIXME: Parse!
+pub enum Line {
+    Text(String),
+    Link { url: String, description: Option<String> },
+    Heading { text: String, depth: u8 },
+    ListItem(String),
+    Quote(String),
+    PreformatToggleOn,
+    PreformatToggleOff,
 }
+
+#[derive(Debug, Eq, PartialEq)]
+pub struct GemTextBody(pub Vec<Line>);
 
 #[derive(Eq, PartialEq)]
 pub struct MimeType {

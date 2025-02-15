@@ -1,7 +1,7 @@
 mod network;
 
 use std::io::{Read, Write};
-use protocol::parser::parse_response;
+use protocol::gemini_protocol::parse_response;
 use crate::network::tls_config::make_tls_config;
 use crate::network::tls_client::TlsClient;
 
@@ -19,7 +19,7 @@ fn main() {
     let mut pt = vec![];
     conn.read_to_end(&mut pt).unwrap();
     let pt = String::from_utf8_lossy(&pt).to_string();
-    // println!("{}", pt);
+    println!("{}", &pt);
 
     let r = parse_response(&pt).unwrap();
 

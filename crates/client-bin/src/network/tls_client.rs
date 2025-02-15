@@ -27,10 +27,10 @@ impl TlsClient
         // NOTE: Does not accept ToSocketAddrs, as we need to know domain.
         let host = addr.0;
         let port = addr.1;
-        let addr = format!("{}:{}", host, port).to_socket_addrs()?.next().ok_or(NetworkError::InvalidDns)?;
+        let addr = format!("{}:{}", host, port).to_socket_addrs()?.next().ok_or(NetworkError::InvalidAddress)?;
 
         let tcp = TcpStream::connect(addr)?;
-        let server_name = ServerName::try_from(host).map_err(|_| NetworkError::InvalidDns)?.to_owned();
+        let server_name = ServerName::try_from(host).map_err(|_| NetworkError::InvalidAddress)?.to_owned();
 
         Self::new(tcp, server_name, tls_config)
     }

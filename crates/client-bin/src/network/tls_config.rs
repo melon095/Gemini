@@ -10,7 +10,7 @@ struct NoCertificateVerification {
 }
 
 impl ServerCertVerifier for NoCertificateVerification {
-    fn verify_server_cert(&self, end_entity: &CertificateDer<'_>, intermediates: &[CertificateDer<'_>], server_name: &ServerName<'_>, ocsp_response: &[u8], now: UnixTime) -> Result<ServerCertVerified, rustls::Error> {
+    fn verify_server_cert(&self, _end_entity: &CertificateDer<'_>, _intermediates: &[CertificateDer<'_>], _server_name: &ServerName<'_>, _ocsp_response: &[u8], _now: UnixTime) -> Result<ServerCertVerified, rustls::Error> {
         Ok(ServerCertVerified::assertion())
     }
 
@@ -33,7 +33,6 @@ pub fn make_tls_config() -> Result<Arc<rustls::ClientConfig>, rustls::Error>  {
     root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
 
     let provider = Arc::new(aws_lc_rs::default_provider());
-    let suites = aws_lc_rs::ALL_CIPHER_SUITES.to_vec();
     let versions = rustls::DEFAULT_VERSIONS.to_vec();
     let mut config = rustls::ClientConfig::builder_with_provider(provider.clone())
         .with_protocol_versions(&versions)?
