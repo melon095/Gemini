@@ -1,7 +1,7 @@
 use std::fmt::{Debug, Display, Formatter};
 use crate::gemtext::gemtext_body::{GemTextBody, MimeType};
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct OkResponse {
     pub mime: MimeType,
     pub body: GemTextBody,
@@ -9,7 +9,7 @@ pub struct OkResponse {
 
 // FIXME: Cow
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Response {
     /// Input Expected
     /// 10

@@ -25,6 +25,12 @@ impl From<std::io::Error> for NetworkError {
 
 impl Debug for NetworkError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        self.fmt(f)
+    }
+}
+
+impl std::fmt::Display for NetworkError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             NetworkError::InvalidAddress => write!(f, "Invalid Address"),
             NetworkError::TlsError(e) => write!(f, "TLS Error: {:?}", e),

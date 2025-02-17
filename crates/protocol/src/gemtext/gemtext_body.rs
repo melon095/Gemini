@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::fmt::{Debug, Display, Formatter};
 
 // TODO: Pre format data should be baked into lines
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Line {
     Text(String),
     Link { url: String, description: Option<String> },
@@ -13,10 +13,10 @@ pub enum Line {
     PreformatToggleOff,
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct GemTextBody(pub Vec<Line>);
 
-#[derive(Eq, PartialEq)]
+#[derive(Eq, Clone, PartialEq)]
 pub struct MimeType {
     pub typ: String,
     pub sub: String,

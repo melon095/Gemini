@@ -1,5 +1,5 @@
 use std::fmt::{Display, Formatter};
-use crate::gemtext::gemtext_body::{GemTextBody};
+use crate::gemtext::gemtext_body::GemTextBody;
 use crate::gemtext::gemtext_parser::GemTextParser;
 
 pub mod gemtext_body;
