@@ -15,14 +15,14 @@ use crate::network::tls_client::TlsClient;
 #[derive(Debug, Clone)]
 pub enum LoadStatus {
     Success(DocumentData),
-    Error(Url, Response),
+    Error(Response),
 }
 
 #[derive(Debug, Clone)]
 pub enum DocumentMessage {
-    LoadComplete(Result<LoadStatus, String>),
+    LoadComplete((Url, Result<LoadStatus, String>)),
     FIX_THIS,
-    LinkPressed(Url), // TODO: Make Url
+    LinkPressed(Url),
 }
 
 #[derive(Debug, Clone)]
@@ -47,25 +47,25 @@ impl Document {
         match self {
             Self::Loading => {
                 match message {
-                    DocumentMessage::LoadComplete(Ok(data)) => {
+                    DocumentMessage::LoadComplete((url, Ok(data))) => {
                         match data {
                             LoadStatus::Success(data) => {
                                 *self = Self::Loaded(data);
                             },
-                            LoadStatus::Error(url, response) => {
+                            LoadStatus::Error(response) => {
                                 *self = Self::Error(url, response);
                             }
                         }
-
-                        Task::none()
                     },
-                    DocumentMessage::LoadComplete(Err(error)) => {
+                    DocumentMessage::LoadComplete((url, Err(error))) => {
                         eprintln!("Failed to load document: {}", error);
 
-                        Task::none()
+                        *self = Self::Error(url, Response::PermanentFailure(Some(format!("Failed to load document: {}", error))));
                     },
-                    _ => Task::none()
-                }
+                    _ => ()
+                };
+
+                Task::none()
             },
             Self::Error(_, _) => Task::none(),
             Self::Loaded(doc) => {
@@ -131,15 +131,17 @@ impl Document {
         }
     }
 
-    async fn load_document(tls: Arc<ClientConfig>, url: Url) -> Result<LoadStatus, String> {
-        match url.scheme() {
-            "gemini" => Self::load_gemini(tls, url).await,
-            "file" => Self::load_file(url).await,
-            _ => return Err(format!("Unsupported scheme: {}", url.scheme()))
-        }
+    async fn load_document(tls: Arc<ClientConfig>, url: Url) -> (Url, Result<LoadStatus, String>) {
+        let r = match url.scheme() {
+            "gemini" => Self::load_gemini(tls, &url).await,
+            "file" => Self::load_file(&url).await,
+            _ => Err(format!("Unsupported scheme: {}", url.scheme()))
+        };
+
+        (url, r)
     }
 
-    async fn load_gemini(tls: Arc<ClientConfig>, url: Url) -> Result<LoadStatus, String> {
+    async fn load_gemini(tls: Arc<ClientConfig>, url: &Url) -> Result<LoadStatus, String> {
 
         const DEFAULT_PORT: u16 = 1965;
 
@@ -160,15 +162,15 @@ impl Document {
 
         if let Response::Success(r) = r {
             Ok(LoadStatus::Success(DocumentData {
-                url,
+                url: url.clone(),
                 content: r,
             }))
         } else {
-            Ok(LoadStatus::Error(url, r))
+            Ok(LoadStatus::Error(r))
         }
     }
 
-    async fn load_file(url: Url) -> Result<LoadStatus, String> {
+    async fn load_file(url: &Url) -> Result<LoadStatus, String> {
         use async_std::fs::File;
 
         let path = url.path().strip_prefix("/").unwrap();
@@ -183,7 +185,7 @@ impl Document {
         };
 
         Ok(LoadStatus::Success(DocumentData {
-            url,
+            url: url.clone(),
             content: OkResponse {
                 mime: Default::default(),
                 body: r
