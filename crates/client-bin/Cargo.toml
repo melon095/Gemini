@@ -9,6 +9,7 @@ webpki-roots = "0.26.8"
 protocol = { path = "../protocol" }
 env_logger = { version = "0.11.6", features = ["auto-color", "humantime"] }
 log = "0.4.25"
-iced = "0.13.1"
+iced = { version = "0.13.1", features = ["advanced"] }
 url = "2.5.4"
+async-std = "1.13.0"
 

@@ -1,15 +1,25 @@
 use std::collections::HashMap;
+use url::Url;
 use crate::error::{ErrorKind, ParserError};
 use crate::gemtext::gemtext_body::{MimeType};
 use crate::gemini_protocol::response::{OkResponse, Response};
 use crate::gemtext::parse_gemtext;
 
 pub(super) struct Parser<'a> {
+    url_path: &'a Url,
     pub(super) iter: std::str::Chars<'a>,
     pub(super) line: usize,
 }
 
 impl<'a> Parser<'a> {
+    pub fn new(url: &'a Url, response: &'a str) -> Self {
+        Self {
+            url_path: url,
+            iter: response.chars(),
+            line: 1,
+        }
+    }
+
     pub(super) fn reply(&mut self) -> Result<Response, ParserError> {
         let c = self.eat_char()?;
         match c {
@@ -53,7 +63,7 @@ impl<'a> Parser<'a> {
 
         Ok(Response::Success(OkResponse {
             mime: mimetype,
-            body: parse_gemtext(body)?,
+            body: parse_gemtext(&self.url_path, body)?,
         }))
      }
 
@@ -244,9 +254,10 @@ mod tests {
 
     #[test]
     fn test_ten() -> Result<(), ParserError> {
+        let url: Url = Url::parse("gemini://localhost/").unwrap();
         let resp = "10 geminmi://localhost/foo\r\n";
 
-        let r = parse_response(resp)?;
+        let r = parse_response(&url, resp)?;
 
         assert_eq!(r, Response::MustPromptForInput("geminmi://localhost/foo".to_string()));
 
@@ -255,9 +266,10 @@ mod tests {
 
     #[test]
     fn test_twenty() -> Result<(), ParserError> {
+        let url: Url = Url::parse("gemini://localhost/").unwrap();
         let resp = "20 text/gemini\r\nHello, World!\nSomeData\n";
 
-        let r = parse_response(resp)?;
+        let r = parse_response(&url, resp)?;
 
         if let Response::Success(OkResponse { mime, body }) = r {
             assert_eq!(mime.typ, "text");
@@ -273,9 +285,10 @@ mod tests {
 
     #[test]
     fn test_mimetype() -> Result<(), ParserError> {
+        let url: Url = Url::parse("gemini://localhost/").unwrap();
         let resp = "20 text/gemini; lang=zh-CN; charset=utf-8\r\n";
 
-        let r = parse_response(resp)?;
+        let r = parse_response(&url, resp)?;
 
         if let Response::Success(OkResponse { mime, .. }) = r {
             assert_eq!(mime.typ, "text");
@@ -294,10 +307,11 @@ mod tests {
 
     #[test]
     fn test_err_syntax_expected_data() -> Result<(), ParserError> {
+        let url: Url = Url::parse("gemini://localhost/").unwrap();
         let cases = vec!["", "2"];
 
         for case in cases {
-            let r = parse_response(case);
+            let r = parse_response(&url, case);
             assert_eq!(r.is_err(), true);
             assert_eq!(r.err() == Some(ParserError {
                 line: 1,
@@ -310,10 +324,11 @@ mod tests {
 
     #[test]
     fn test_syntax_missing_newline() -> Result<(), ParserError> {
+        let url: Url = Url::parse("gemini://localhost/").unwrap();
         let cases = vec!["20 text/gemini Hello, World!"];
 
         for case in cases {
-            let r = parse_response(case);
+            let r = parse_response(&url, case);
             assert_eq!(r.is_err(), true);
             assert_eq!(r.err() == Some(ParserError {
                 line: 1,
@@ -326,10 +341,11 @@ mod tests {
 
     #[test]
     fn test_syntax_missing_space() -> Result<(), ParserError> {
+        let url: Url = Url::parse("gemini://localhost/").unwrap();
         let cases = vec!["20text/gemini\r\n"];
 
         for case in cases {
-            let r = parse_response(case);
+            let r = parse_response(&url, case);
             assert_eq!(r.is_err(), true);
             assert_eq!(r.err() == Some(ParserError {
                 line: 1,
@@ -342,10 +358,11 @@ mod tests {
 
     #[test]
     fn test_invalid_digit() -> Result<(), ParserError> {
+        let url: Url = Url::parse("gemini://localhost/").unwrap();
         let cases = vec!["2a0 text/gemini\r\n"];
 
         for case in cases {
-            let r = parse_response(case);
+            let r = parse_response(&url, case);
             assert_eq!(r.is_err(), true);
             assert_eq!(r.err() == Some(ParserError {
                 line: 1,

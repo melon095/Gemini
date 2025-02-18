@@ -1,21 +1,14 @@
 mod network;
 mod document;
-mod gemtext_iced_impl;
 
-use std::io::{Read, Write};
-use std::ops::Deref;
 use std::sync::Arc;
-use iced::{Application, Center, Subscription, Task};
-use iced::widget::{button, center, column, rich_text, row, scrollable, span, text, text_input, Column, Row, Scrollable};
-use iced::widget::text_editor::Action::Scroll;
+use iced::{Center, Task};
+use iced::widget::{button, column, row, scrollable, text_input, Row};
 use log::info;
 use rustls::ClientConfig;
 use url::Url;
-use protocol::gemini_protocol::parse_response;
 use crate::document::{Document, DocumentMessage};
 use crate::network::tls_config::make_tls_config;
-use crate::network::tls_client::TlsClient;
-use crate::network::tls_config;
 
 #[derive(Debug, Clone)]
 pub enum GeminiRootMessage {
@@ -33,8 +26,11 @@ pub struct GeminiRootWindow {
 
 impl GeminiRootWindow {
     fn new() -> (Self, Task<GeminiRootMessage>) {
+        // let url = Url::parse("gemini://geminiprotocol.net/").unwrap();
+        let url = Url::parse(&format!("file://{}/../../files/test.gemini", env!("CARGO_MANIFEST_DIR"))).unwrap();
+
         let tls_config = make_tls_config().unwrap();
-        let (document, task) = Document::new(tls_config.clone(), Url::parse("gemini://geminiprotocol.net/").unwrap());
+        let (document, task) = Document::new(tls_config.clone(), url);
 
         // let tasks = vec![task];
 
@@ -118,10 +114,6 @@ impl GeminiRootWindow {
                 .align_x(Center)
                 .extend(document_views)
         ).into()
-    }
-
-    fn subscription(&self) -> Subscription<GeminiRootMessage> {
-        Subscription::none()
     }
 }
 

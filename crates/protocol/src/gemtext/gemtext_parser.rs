@@ -1,3 +1,4 @@
+use url::Url;
 use crate::gemtext::gemtext_body::{GemTextBody, Line};
 use crate::gemtext::{GemTextError, GemTextErrorKind};
 
@@ -18,18 +19,20 @@ pub enum ParserMode {
 #[derive(Debug)]
 pub struct GemTextParser<'a> {
     line_iter: std::str::Lines<'a>,
-    cursor: &'a str,
+    url_path: &'a Url,
     pub body: Vec<Line>,
+    cursor: &'a str,
     pub line_num: usize,
     pub mode: ParserMode,
 }
 
 impl<'a> GemTextParser<'a> {
-    pub(super) fn new(str: &'a str) -> GemTextParser<'a> {
+    pub(super) fn new(url_path: &'a Url, str: &'a str) -> GemTextParser<'a> {
         GemTextParser {
             line_iter: str.lines(),
-            cursor: "",
             body: Vec::new(),
+            url_path: url_path,
+            cursor: "",
             line_num: 0,
             mode: ParserMode::Normal,
         }
@@ -90,7 +93,7 @@ impl<'a> GemTextParser<'a> {
         let url = split[0];
         if split.len() == 1 {
             return Ok(Line::Link {
-                url: url.to_string(),
+                url: self.make_url(url)?,
                 description: None
             });
         }
@@ -98,7 +101,7 @@ impl<'a> GemTextParser<'a> {
         let text = Some(split[1..].join(" "));
 
         Ok(Line::Link {
-            url: url.to_string(),
+            url: self.make_url(url)?,
             description: text
         })
     }
@@ -152,44 +155,62 @@ impl<'a> GemTextParser<'a> {
             kind,
         }
     }
+
+    fn make_url(&self, input: &str) -> Result<Url, GemTextError> {
+        let url = Url::parse(input);
+        match url {
+            Ok(url) => Ok(url),
+            Err(_) => {
+                let url = self.url_path.join(input);
+                match url {
+                    Ok(url) => Ok(url),
+                    Err(err) => Err(self.make_err(GemTextErrorKind::InvalidUrl(err)))
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]
 mod test {
+    use url::Url;
     use crate::gemtext::{parse_gemtext, gemtext_body::Line, GemTextErrorKind};
     use crate::gemtext::gemtext_body::Line::{Heading, Link, Text};
 
     #[test]
     fn test_link_line_description() {
+        let url = Url::parse("gemini://gemini.circumlunar.space/docs/faq.gmi").unwrap();
         let input = "=> gemini://gemini.circumlunar.space/docs/faq.gmi The Gemini FAQ".to_string();
-        let parsed = parse_gemtext(input);
+        let parsed = parse_gemtext(&url, input);
         assert!(parsed.is_ok());
         let parsed = parsed.unwrap();
         assert_eq!(parsed.0.len(), 1);
         assert_eq!(parsed.0.get(0).unwrap(), &Line::Link {
-            url: "gemini://gemini.circumlunar.space/docs/faq.gmi".to_string(),
+            url: Url::parse("gemini://gemini.circumlunar.space/docs/faq.gmi").unwrap(),
             description: Some("The Gemini FAQ".to_string())
         })
     }
 
     #[test]
     fn test_link_line() {
+        let url = Url::parse("gemini://gemini.circumlunar.space/docs/faq.gmi").unwrap();
         let input = "=>   \t\r gemini://gemini.circumlunar.space/docs/faq.gmi ".to_string();
-        let parsed = parse_gemtext(input);
+        let parsed = parse_gemtext(&url, input);
         assert!(parsed.is_ok());
         let parsed = parsed.unwrap();
         assert_eq!(parsed.0.len(), 1);
         assert_eq!(parsed.0.get(0).unwrap(), &Line::Link {
-            url: "gemini://gemini.circumlunar.space/docs/faq.gmi".to_string(),
+            url: Url::parse("gemini://gemini.circumlunar.space/docs/faq.gmi").unwrap(),
             description: None
         })
     }
 
     #[test]
     fn test_link_line_missing_url() {
+        let url = Url::parse("gemini://gemini.circumlunar.space/docs/faq.gmi").unwrap();
         let input = "=> ".to_string();
 
-        let parsed = parse_gemtext(input);
+        let parsed = parse_gemtext(&url, input);
         assert!(parsed.is_err());
         let parsed = parsed.unwrap_err();
         assert_eq!(parsed.line, 1);
@@ -198,7 +219,7 @@ mod test {
 
     #[test]
     fn test_homepage() {
-
+        let url = Url::parse("gemini://geminiprotocol.net/").unwrap();
     const INPUT: &'static str = r#"# Project Gemini
 
 ## Gemini in 100 words
@@ -219,7 +240,7 @@ All content at geminiprotocol.net is CC BY-NC-ND 4.0 licensed unless stated othe
 => https://creativecommons.org/licenses/by-nc-nd/4.0/   CC Attribution-NonCommercial-NoDerivs 4.0 International
 "#;
 
-        let parsed = parse_gemtext(INPUT.to_string());
+        let parsed = parse_gemtext(&url, INPUT.to_string());
         assert!(parsed.is_ok());
         let parsed = parsed.unwrap();
         assert_eq!(parsed.0.len(), 18);
@@ -238,11 +259,11 @@ All content at geminiprotocol.net is CC BY-NC-ND 4.0 licensed unless stated othe
             Text("Gemini is a new internet technology supporting an electronic library of interconnected text documents.  That's not a new idea, but it's not old fashioned either.  It's timeless, and deserves tools which treat it as a first class concept, not a vestigial corner case.  Gemini isn't about innovation or disruption, it's about providing some respite for those who feel the internet has been disrupted enough already.  We're not out to change the world or destroy other technologies.  We are out to build a lightweight online space where documents are just documents, in the interests of every reader's privacy, attention and bandwidth.".to_string()),
             Text("".to_string()),
             Link {
-                url: "docs/faq.gmi".to_string(),
+                url: Url::parse("gemini://geminiprotocol.net/docs/faq.gmi").unwrap(),
                 description: Some("If you'd like to know more, read our FAQ".to_string())
             },
             Link {
-                url: "https://www.youtube.com/watch?v=DoEI6VzybDk".to_string(),
+                url: Url::parse("https://www.youtube.com/watch?v=DoEI6VzybDk").unwrap(),
                 description: Some(" Or, if you'd prefer, here's a video overview".to_string())
             },
             Text("".to_string()),
@@ -252,25 +273,25 @@ All content at geminiprotocol.net is CC BY-NC-ND 4.0 licensed unless stated othe
             },
             Text("".to_string()),
             Link {
-                url: "news/".to_string(),
+                url: Url::parse("gemini://geminiprotocol.net/news/").unwrap(),
                 description: Some("       Project Gemini news".to_string())
             },
             Link {
-                url: "docs/".to_string(),
+                url: Url::parse("gemini://geminiprotocol.net/docs/").unwrap(),
                 description: Some("       Project Gemini documentation".to_string())
             },
             Link {
-                url: "history/".to_string(),
+                url: Url::parse("gemini://geminiprotocol.net/history/").unwrap(),
                 description: Some("    Project Gemini history".to_string())
             },
             Link {
-                url: "software/".to_string(),
+                url: Url::parse("gemini://geminiprotocol.net/software/").unwrap(),
                 description: Some("   Known Gemini software".to_string())
             },
             Text("".to_string()),
             Text("All content at geminiprotocol.net is CC BY-NC-ND 4.0 licensed unless stated otherwise:".to_string()),
             Link {
-                url: "https://creativecommons.org/licenses/by-nc-nd/4.0/".to_string(),
+                url: Url::parse("https://creativecommons.org/licenses/by-nc-nd/4.0/").unwrap(),
                 description: Some("  CC Attribution-NonCommercial-NoDerivs 4.0 International".to_string())
             }
         ])

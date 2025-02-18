@@ -1,11 +1,12 @@
 use std::collections::HashMap;
 use std::fmt::{Debug, Display, Formatter};
+use url::Url;
 
 // TODO: Pre format data should be baked into lines
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Line {
     Text(String),
-    Link { url: String, description: Option<String> },
+    Link { url: Url, description: Option<String> },
     Heading { text: String, depth: u8 },
     ListItem(String),
     Quote(String),
@@ -21,6 +22,16 @@ pub struct MimeType {
     pub typ: String,
     pub sub: String,
     pub parameters: Option<HashMap<String, String>>
+}
+
+impl Default for MimeType {
+    fn default() -> Self {
+        Self {
+            typ: "text".to_string(),
+            sub: "gemini".to_string(),
+            parameters: None
+        }
+    }
 }
 
 impl Debug for MimeType {

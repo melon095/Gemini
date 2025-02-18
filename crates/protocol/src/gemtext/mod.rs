@@ -1,4 +1,5 @@
 use std::fmt::{Display, Formatter};
+use url::Url;
 use crate::gemtext::gemtext_body::GemTextBody;
 use crate::gemtext::gemtext_parser::GemTextParser;
 
@@ -14,6 +15,7 @@ pub struct GemTextError {
 #[derive(Debug, Eq, PartialEq)]
 pub enum GemTextErrorKind {
     LinkLineMissingUrl,
+    InvalidUrl(url::ParseError)
 }
 
 impl Display for GemTextError {
@@ -26,12 +28,13 @@ impl Display for GemTextErrorKind {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             GemTextErrorKind::LinkLineMissingUrl => write!(f, "Link line missing URL"),
+            GemTextErrorKind::InvalidUrl(e) => write!(f, "Invalid URL: {}", e),
         }
     }
 }
 
-pub fn parse_gemtext(str: String) -> Result<GemTextBody, GemTextError> {
-    let mut parser = GemTextParser::new(&str);
+pub fn parse_gemtext(url_path: &Url, str: String) -> Result<GemTextBody, GemTextError> {
+    let mut parser = GemTextParser::new(url_path, &str);
 
     parser.gemtext_document()
 }

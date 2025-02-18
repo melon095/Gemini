@@ -1,0 +1,19 @@
+This is a gemini test file
+
+# Header 1
+
+## Header 2
+
+### Header 3
+
+=> /test.gemini Another link
+=> /test.gemini#header-1 Link to header 1
+=> https://example.com External link
+
+```
+i am a code block
+```
+
+* List item 1
+* List item 2
+* List item 3

@@ -25,7 +25,7 @@ impl From<std::io::Error> for NetworkError {
 
 impl Debug for NetworkError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        self.fmt(f)
+        fmt::Display::fmt(self, f)
     }
 }
 
