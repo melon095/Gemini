@@ -2,6 +2,7 @@ use crate::document::{Document, DocumentMessage};
 use crate::network::tls_config::make_tls_config;
 use iced::widget::{button, column, row, scrollable, text, text_input, Button, Row, Text};
 use iced::{Background, Center, Color, Length, Task};
+use iced_aw::ContextMenu;
 use log::info;
 use rustls::ClientConfig;
 use std::sync::Arc;
@@ -14,6 +15,7 @@ pub enum GeminiRootMessage {
     DocumentMessage(usize, DocumentMessage),
     DocumentHasLoaded(usize, DocumentMessage),
     ViewDocument(usize),
+    CloseDocument(usize),
     DocumentGoBack,
     DocumentGoForward,
     DebugPrintDocument,
@@ -110,6 +112,13 @@ impl GeminiRootWindow {
                 self.document_cursor = index;
                 Task::none()
             }
+            GeminiRootMessage::CloseDocument(index) => {
+                self.documents.remove(index);
+                if self.document_cursor >= self.documents.len() {
+                    self.document_cursor = self.documents.len().saturating_sub(1);
+                }
+                Task::none()
+            }
             GeminiRootMessage::DocumentGoBack => {
                 if let Some(document) = self.documents.get_mut(self.document_cursor) {
                     let cursor = self.document_cursor;
@@ -145,7 +154,18 @@ impl GeminiRootWindow {
                 .on_press(GeminiRootMessage::ViewDocument(index));
             let c = column![b];
 
-            document_tabs = document_tabs.push(c);
+            let menu = ContextMenu::new(c, move || {
+                column(vec![
+                    Button::new(Text::new("Close"))
+                        .on_press(GeminiRootMessage::CloseDocument(index))
+                        .style(button::secondary)
+                        .into(),
+                ])
+                .spacing(10)
+                .into()
+            });
+
+            document_tabs = document_tabs.push(menu);
         }
 
         let document_tabs = scrollable(document_tabs.spacing(10));
@@ -186,7 +206,7 @@ impl GeminiRootWindow {
 
     fn view_document(&self) -> iced::Element<GeminiRootMessage> {
         match self.documents.get(self.document_cursor) {
-            None => text!("THIS SHOULD NEVER HAPPEN ({})", self.document_cursor).into(),
+            None => text("No document to display").into(),
             Some(document) => {
                 let view = document
                     .view()
