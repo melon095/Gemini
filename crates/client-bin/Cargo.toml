@@ -1,10 +1,10 @@
 [package]
 name = "gemini"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
-rustls = { version = "0.23.23", features = ["tls12"]}
+rustls = { version = "0.23.23", features = ["tls12"] }
 webpki-roots = "0.26.8"
 protocol = { path = "../protocol" }
 env_logger = { version = "0.11.6", features = ["auto-color", "humantime"] }
