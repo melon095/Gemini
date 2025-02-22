@@ -29,26 +29,37 @@ pub struct GeminiRootWindow {
 
 impl GeminiRootWindow {
     fn new() -> (Self, Task<GeminiRootMessage>) {
-        // let url = Url::parse("gemini://geminiprotocol.net/").unwrap();
-        let url = Url::parse(&format!(
-            "file://{}/../../files/test.gemini",
-            env!("CARGO_MANIFEST_DIR")
-        ))
-        .unwrap();
+        let urls = vec![
+            Url::parse("gemini://geminiprotocol.net/").unwrap(),
+            Url::parse(&format!(
+                "file://{}/../../files/test.gemini",
+                env!("CARGO_MANIFEST_DIR")
+            ))
+            .unwrap(),
+        ];
 
         let tls_config = make_tls_config().unwrap();
-        let (document, task) = Document::new(tls_config.clone(), url);
 
-        // let tasks = vec![task];
+        let mut documents = Vec::new();
+        let mut tasks = Vec::new();
+
+        for (index, url) in urls.iter().enumerate() {
+            let (document, task) = Document::new(tls_config.clone(), url.clone());
+            documents.push(document);
+
+            tasks.push(task.map(move |d| {
+                return GeminiRootMessage::DocumentHasLoaded(index, d);
+            }));
+        }
 
         (
             Self {
                 tls_config,
                 search_box: String::new(),
-                documents: vec![document],
-                document_cursor: 0, // }, Task::batch(tasks))
+                documents: documents,
+                document_cursor: 0,
             },
-            task.map(|d| GeminiRootMessage::DocumentMessage(0, d)),
+            Task::batch(tasks),
         )
     }
 
@@ -140,8 +151,15 @@ impl GeminiRootWindow {
         match self.documents.get(self.document_cursor) {
             None => text!("THIS SHOULD NEVER HAPPEN ({})", self.document_cursor).into(),
             Some(document) => {
-                let view = document.view();
-                view.map(move |msg| GeminiRootMessage::DocumentMessage(self.document_cursor, msg))
+                let view = document
+                    .view()
+                    .map(move |msg| GeminiRootMessage::DocumentMessage(self.document_cursor, msg));
+
+                scrollable(view)
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .spacing(10)
+                    .into()
             }
         }
     }

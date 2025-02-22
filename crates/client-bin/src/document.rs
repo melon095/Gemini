@@ -1,7 +1,7 @@
 use crate::network::tls_client::TlsClient;
 use iced::futures::AsyncReadExt;
 use iced::widget::button::{Status, Style};
-use iced::widget::{button, rich_text, scrollable, span};
+use iced::widget::{button, rich_text, scrollable, span, Column};
 use iced::{
     widget::{column, text}, Background, Border, Color, Shadow, Task,
     Theme,
@@ -32,6 +32,7 @@ pub enum DocumentMessage {
 pub struct DocumentData {
     url: Url,
     content: OkResponse,
+    tls_config: Arc<ClientConfig>,
 }
 
 #[derive(Debug)]
@@ -94,7 +95,10 @@ impl Document {
                 DocumentMessage::LinkPressed(url) => {
                     log::info!("Link pressed: {}", url);
 
-                    Task::none()
+                    let (document, task) = Self::new(Arc::clone(&doc.tls_config), url);
+
+                    *self = document;
+                    task
                 }
                 _ => Task::none(),
             },
@@ -106,7 +110,7 @@ impl Document {
             Self::Loading => text("Loading...").into(),
             Self::Error(url, response) => text(format!("Error: {}: {:?}", url, response)).into(),
             Self::Loaded(data) => {
-                let mut columns = column![text(data.url.to_string())];
+                let mut columns = Column::new();
 
                 for line in &data.content.body.0 {
                     columns = match line {
@@ -145,20 +149,20 @@ impl Document {
     async fn load_document(tls: Arc<ClientConfig>, url: Url) -> (Url, Result<LoadStatus, String>) {
         let r = match url.scheme() {
             "gemini" => Self::load_gemini(tls, &url).await,
-            "file" => Self::load_file(&url).await,
+            "file" => Self::load_file(tls, &url).await,
             _ => Err(format!("Unsupported scheme: {}", url.scheme())),
         };
 
         (url, r)
     }
 
-    async fn load_gemini(tls: Arc<ClientConfig>, url: &Url) -> Result<LoadStatus, String> {
+    async fn load_gemini(tls_config: Arc<ClientConfig>, url: &Url) -> Result<LoadStatus, String> {
         const DEFAULT_PORT: u16 = 1965;
 
         let host = url.host_str().ok_or("No host found")?;
         let port = url.port().unwrap_or(DEFAULT_PORT);
 
-        let mut conn = TlsClient::new_from_host((host, port), tls)
+        let mut conn = TlsClient::new_from_host((host, port), tls_config.clone())
             .map_err(|e| format!("Failed to connect: {}", e))?;
 
         write!(conn, "{}\r\n", url.to_string()).unwrap();
@@ -174,13 +178,14 @@ impl Document {
             Ok(LoadStatus::Success(DocumentData {
                 url: url.clone(),
                 content: r,
+                tls_config,
             }))
         } else {
             Ok(LoadStatus::Error(r))
         }
     }
 
-    async fn load_file(url: &Url) -> Result<LoadStatus, String> {
+    async fn load_file(tls_config: Arc<ClientConfig>, url: &Url) -> Result<LoadStatus, String> {
         use async_std::fs::File;
 
         let path = url.path().strip_prefix("/").unwrap();
@@ -204,6 +209,7 @@ impl Document {
                 mime: Default::default(),
                 body: r,
             },
+            tls_config,
         }))
     }
 }
