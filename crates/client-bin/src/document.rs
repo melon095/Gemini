@@ -101,15 +101,10 @@ impl Document {
                         }
                     },
                     DocumentMessage::LoadComplete((url, Err(error))) => {
-                        eprintln!("Failed to load document: {}", error);
+                        log::error!("Failed to load document: {}", error);
 
-                        self.state = DocumentState::Error(
-                            url,
-                            Response::PermanentFailure(Some(format!(
-                                "Failed to load document: {}",
-                                error
-                            ))),
-                        );
+                        self.state =
+                            DocumentState::Error(url, Response::PermanentFailure(Some(error)));
                     }
                     _ => (),
                 };
@@ -131,9 +126,7 @@ impl Document {
     pub fn view(&self) -> iced::Element<DocumentMessage> {
         match &self.state {
             DocumentState::Loading => text("Loading...").into(),
-            DocumentState::Error(url, response) => {
-                text(format!("Error: {}: {:?}", url, response)).into()
-            }
+            DocumentState::Error(url, response) => text(format!("{}: {}", url, response)).into(),
             DocumentState::Loaded(data) => {
                 let mut columns = Column::new();
 
