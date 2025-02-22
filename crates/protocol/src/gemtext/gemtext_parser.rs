@@ -1,6 +1,6 @@
-use url::Url;
 use crate::gemtext::gemtext_body::{GemTextBody, Line};
 use crate::gemtext::{GemTextError, GemTextErrorKind};
+use url::Url;
 
 const LINK_START: &'static str = "=>";
 const PREFORMAT_TOGGLE: &'static str = "```";
@@ -13,7 +13,7 @@ const WSP: &[char; 2] = &[' ', '\t'];
 #[derive(Debug, Eq, PartialEq)]
 pub enum ParserMode {
     Normal,
-    Preformat
+    Preformat,
 }
 
 #[derive(Debug)]
@@ -75,7 +75,8 @@ impl<'a> GemTextParser<'a> {
     fn link_line(&mut self) -> Result<Line, GemTextError> {
         const START: usize = "=>".len();
 
-        let line = self.cursor
+        let line = self
+            .cursor
             .chars()
             .skip(START)
             .skip_while(|c| c.is_whitespace())
@@ -94,7 +95,7 @@ impl<'a> GemTextParser<'a> {
         if split.len() == 1 {
             return Ok(Line::Link {
                 url: self.make_url(url)?,
-                description: None
+                description: None,
             });
         }
 
@@ -102,7 +103,7 @@ impl<'a> GemTextParser<'a> {
 
         Ok(Line::Link {
             url: self.make_url(url)?,
-            description: text
+            description: text,
         })
     }
 
@@ -122,13 +123,16 @@ impl<'a> GemTextParser<'a> {
     fn heading(&mut self) -> Result<Line, GemTextError> {
         let depth = self.cursor.chars().take_while(|c| c == &'#').count();
 
-        Ok(Line::Heading { text: self.cursor[depth..].trim().to_string(), depth: depth as u8 })
+        Ok(Line::Heading {
+            text: self.cursor[depth..].trim().to_string(),
+            depth: depth as u8,
+        })
     }
 
     fn list_item(&mut self) -> Result<Line, GemTextError> {
         const START: usize = "* ".len();
 
-        let line = self.take_cursor_whitespace(START);
+        let line = self.cursor.chars().skip(START).collect::<String>();
 
         Ok(Line::ListItem(line))
     }
@@ -164,7 +168,7 @@ impl<'a> GemTextParser<'a> {
                 let url = self.url_path.join(input);
                 match url {
                     Ok(url) => Ok(url),
-                    Err(err) => Err(self.make_err(GemTextErrorKind::InvalidUrl(err)))
+                    Err(err) => Err(self.make_err(GemTextErrorKind::InvalidUrl(err))),
                 }
             }
         }
@@ -173,9 +177,9 @@ impl<'a> GemTextParser<'a> {
 
 #[cfg(test)]
 mod test {
-    use url::Url;
-    use crate::gemtext::{parse_gemtext, gemtext_body::Line, GemTextErrorKind};
     use crate::gemtext::gemtext_body::Line::{Heading, Link, Text};
+    use crate::gemtext::{gemtext_body::Line, parse_gemtext, GemTextErrorKind};
+    use url::Url;
 
     #[test]
     fn test_link_line_description() {
@@ -185,10 +189,13 @@ mod test {
         assert!(parsed.is_ok());
         let parsed = parsed.unwrap();
         assert_eq!(parsed.0.len(), 1);
-        assert_eq!(parsed.0.get(0).unwrap(), &Line::Link {
-            url: Url::parse("gemini://gemini.circumlunar.space/docs/faq.gmi").unwrap(),
-            description: Some("The Gemini FAQ".to_string())
-        })
+        assert_eq!(
+            parsed.0.get(0).unwrap(),
+            &Line::Link {
+                url: Url::parse("gemini://gemini.circumlunar.space/docs/faq.gmi").unwrap(),
+                description: Some("The Gemini FAQ".to_string())
+            }
+        )
     }
 
     #[test]
@@ -199,10 +206,13 @@ mod test {
         assert!(parsed.is_ok());
         let parsed = parsed.unwrap();
         assert_eq!(parsed.0.len(), 1);
-        assert_eq!(parsed.0.get(0).unwrap(), &Line::Link {
-            url: Url::parse("gemini://gemini.circumlunar.space/docs/faq.gmi").unwrap(),
-            description: None
-        })
+        assert_eq!(
+            parsed.0.get(0).unwrap(),
+            &Line::Link {
+                url: Url::parse("gemini://gemini.circumlunar.space/docs/faq.gmi").unwrap(),
+                description: None
+            }
+        )
     }
 
     #[test]
@@ -220,7 +230,7 @@ mod test {
     #[test]
     fn test_homepage() {
         let url = Url::parse("gemini://geminiprotocol.net/").unwrap();
-    const INPUT: &'static str = r#"# Project Gemini
+        const INPUT: &'static str = r#"# Project Gemini
 
 ## Gemini in 100 words
 
