@@ -46,26 +46,41 @@ impl<'a> GemTextParser<'a> {
             self.line_num += 1;
             self.cursor = line;
 
-            b.0.push(self.gemtext_line(line)?);
+            b.0.push(match self.gemtext_line(line) {
+                Some(line) => line?,
+                None => continue,
+            });
         }
 
         Ok(b)
     }
 
-    fn gemtext_line(&mut self, line: &'a str) -> Result<Line, GemTextError> {
-        if line.starts_with(LINK_START) {
-            self.link_line()
-        } else if line.starts_with(PREFORMAT_TOGGLE) {
-            self.preformat_toggle()
-        } else if line.starts_with(HEADING_START) {
-            self.heading()
-        } else if line.starts_with(LIST_ITEM) {
-            self.list_item()
-        } else if line.starts_with(QUOTE_START) {
-            self.quote_line()
-        } else {
-            self.text_line(line)
+    fn gemtext_line(&mut self, line: &'a str) -> Option<Result<Line, GemTextError>> {
+        if line.starts_with(PREFORMAT_TOGGLE) {
+            self.preformat_toggle();
+
+            return None;
         }
+
+        if self.mode == ParserMode::Preformat {
+            return Some(Ok(Line::Raw(line.to_string())));
+        }
+
+        let line = {
+            if line.starts_with(LINK_START) {
+                self.link_line()
+            } else if line.starts_with(HEADING_START) {
+                self.heading()
+            } else if line.starts_with(LIST_ITEM) {
+                self.list_item()
+            } else if line.starts_with(QUOTE_START) {
+                self.quote_line()
+            } else {
+                self.text_line(line)
+            }
+        };
+
+        Some(line)
     }
 
     fn text_line(&self, line: &'a str) -> Result<Line, GemTextError> {
@@ -107,15 +122,13 @@ impl<'a> GemTextParser<'a> {
         })
     }
 
-    fn preformat_toggle(&mut self) -> Result<Line, GemTextError> {
+    fn preformat_toggle(&mut self) {
         match self.mode {
             ParserMode::Normal => {
                 self.mode = ParserMode::Preformat;
-                Ok(Line::PreformatToggleOn)
             }
             ParserMode::Preformat => {
                 self.mode = ParserMode::Normal;
-                Ok(Line::PreformatToggleOff)
             }
         }
     }

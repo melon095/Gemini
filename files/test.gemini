@@ -12,8 +12,11 @@ This is a gemini test file
 
 ```
 i am a code block
+=> This should not be parsed as a link  🫣
 ```
 
 * List item 1
 * List item 2
 * List item 3
+
+æ ø å سلام Привет

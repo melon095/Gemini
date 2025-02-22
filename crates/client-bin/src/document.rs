@@ -132,7 +132,6 @@ impl Document {
 
                 for line in &data.content.body.0 {
                     columns = match line {
-                        Line::Text(val) => columns.push(text(val)),
                         Line::Link { url, description } => {
                             let description = description.as_ref().cloned().unwrap_or_default();
 
@@ -148,14 +147,12 @@ impl Document {
 
                             columns.push(head)
                         }
-                        Line::ListItem(value) => {
-                            let item = rich_text!(span(value)).size(10.0);
-
-                            columns.push(item)
+                        Line::Text(value)
+                        | Line::Quote(value)
+                        | Line::Raw(value)
+                        | Line::ListItem(value) => {
+                            columns.push(Text::new(value).shaping(Shaping::Advanced))
                         }
-                        Line::Quote(value) => columns.push(text(value)),
-                        Line::PreformatToggleOn => columns.push(text("```")),
-                        Line::PreformatToggleOff => columns.push(text("```")),
                     };
                 }
 

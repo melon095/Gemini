@@ -2,16 +2,20 @@ use std::collections::HashMap;
 use std::fmt::{Debug, Display, Formatter};
 use url::Url;
 
-// TODO: Pre format data should be baked into lines
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Line {
     Text(String),
-    Link { url: Url, description: Option<String> },
-    Heading { text: String, depth: u8 },
+    Link {
+        url: Url,
+        description: Option<String>,
+    },
+    Heading {
+        text: String,
+        depth: u8,
+    },
     ListItem(String),
     Quote(String),
-    PreformatToggleOn,
-    PreformatToggleOff,
+    Raw(String),
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -21,7 +25,7 @@ pub struct GemTextBody(pub Vec<Line>);
 pub struct MimeType {
     pub typ: String,
     pub sub: String,
-    pub parameters: Option<HashMap<String, String>>
+    pub parameters: Option<HashMap<String, String>>,
 }
 
 impl Default for MimeType {
@@ -29,7 +33,7 @@ impl Default for MimeType {
         Self {
             typ: "text".to_string(),
             sub: "gemini".to_string(),
-            parameters: None
+            parameters: None,
         }
     }
 }
