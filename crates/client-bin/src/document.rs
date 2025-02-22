@@ -11,9 +11,16 @@ use protocol::gemini_protocol::response::{OkResponse, Response};
 use protocol::gemtext::gemtext_body::Line;
 use protocol::gemtext::parse_gemtext;
 use rustls::ClientConfig;
+use std::collections::LinkedList;
 use std::io::{Read, Write};
 use std::sync::Arc;
 use url::Url;
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum ShouldSaveHistory {
+    Yes,
+    No,
+}
 
 #[derive(Debug, Clone)]
 pub enum LoadStatus {
@@ -32,11 +39,17 @@ pub enum DocumentMessage {
 pub struct DocumentData {
     url: Url,
     content: OkResponse,
-    tls_config: Arc<ClientConfig>,
 }
 
 #[derive(Debug)]
-pub enum Document {
+pub struct Document {
+    tls_config: Arc<ClientConfig>,
+    pub history: LinkedList<Url>,
+    pub state: DocumentState,
+}
+
+#[derive(Debug)]
+pub enum DocumentState {
     Loading,
     Error(Url, Response),
     Loaded(DocumentData),
@@ -44,39 +57,57 @@ pub enum Document {
 
 impl Document {
     pub fn new(tls_client: Arc<ClientConfig>, url: Url) -> (Self, Task<DocumentMessage>) {
-        (
-            Self::Loading,
-            Task::perform(
-                Self::load_document(tls_client, url.clone()),
-                DocumentMessage::LoadComplete,
-            ),
-        )
+        let mut doc = Self {
+            tls_config: tls_client.clone(),
+            history: LinkedList::new(),
+            state: DocumentState::Loading,
+        };
+        let task = doc.load_new_page(url.clone(), ShouldSaveHistory::Yes);
+
+        (doc, task)
     }
 
     pub fn title(&self) -> String {
-        match self {
-            Self::Loading => "Loading...".to_string(),
-            Self::Error(url, ..) => format!("Error {}", url),
-            Self::Loaded(data) => data.url.to_string(),
+        match &self.state {
+            DocumentState::Loading => "Loading...".to_string(),
+            DocumentState::Error(url, ..) => format!("Error {}", url),
+            DocumentState::Loaded(data) => data.url.to_string(),
+        }
+    }
+
+    pub fn can_go_back(&self) -> bool {
+        self.history.len() > 1 && !matches!(self.state, DocumentState::Loading)
+    }
+
+    pub fn go_back(&mut self) -> Task<DocumentMessage> {
+        assert!(self.can_go_back());
+
+        if self.history.len() > 1 {
+            self.history.pop_back();
+            let url = self.history.back().unwrap().clone();
+
+            self.load_new_page(url, ShouldSaveHistory::No)
+        } else {
+            Task::none()
         }
     }
 
     pub fn update(&mut self, message: DocumentMessage) -> Task<DocumentMessage> {
-        match self {
-            Self::Loading => {
+        match &self.state {
+            DocumentState::Loading => {
                 match message {
                     DocumentMessage::LoadComplete((url, Ok(data))) => match data {
                         LoadStatus::Success(data) => {
-                            *self = Self::Loaded(data);
+                            self.state = DocumentState::Loaded(data);
                         }
                         LoadStatus::Error(response) => {
-                            *self = Self::Error(url, response);
+                            self.state = DocumentState::Error(url, response);
                         }
                     },
                     DocumentMessage::LoadComplete((url, Err(error))) => {
                         eprintln!("Failed to load document: {}", error);
 
-                        *self = Self::Error(
+                        self.state = DocumentState::Error(
                             url,
                             Response::PermanentFailure(Some(format!(
                                 "Failed to load document: {}",
@@ -89,16 +120,13 @@ impl Document {
 
                 Task::none()
             }
-            Self::Error(_, _) => Task::none(),
-            Self::Loaded(doc) => match message {
+            DocumentState::Error(_, _) => Task::none(),
+            DocumentState::Loaded(doc) => match message {
                 DocumentMessage::FIX_THIS => Task::none(),
                 DocumentMessage::LinkPressed(url) => {
                     log::info!("Link pressed: {}", url);
 
-                    let (document, task) = Self::new(Arc::clone(&doc.tls_config), url);
-
-                    *self = document;
-                    task
+                    self.load_new_page(url, ShouldSaveHistory::Yes)
                 }
                 _ => Task::none(),
             },
@@ -106,10 +134,12 @@ impl Document {
     }
 
     pub fn view(&self) -> iced::Element<DocumentMessage> {
-        match self {
-            Self::Loading => text("Loading...").into(),
-            Self::Error(url, response) => text(format!("Error: {}: {:?}", url, response)).into(),
-            Self::Loaded(data) => {
+        match &self.state {
+            DocumentState::Loading => text("Loading...").into(),
+            DocumentState::Error(url, response) => {
+                text(format!("Error: {}: {:?}", url, response)).into()
+            }
+            DocumentState::Loaded(data) => {
                 let mut columns = Column::new();
 
                 for line in &data.content.body.0 {
@@ -146,10 +176,26 @@ impl Document {
         }
     }
 
+    fn load_new_page(
+        &mut self,
+        url: Url,
+        should_save_history: ShouldSaveHistory,
+    ) -> Task<DocumentMessage> {
+        self.state = DocumentState::Loading;
+        if should_save_history == ShouldSaveHistory::Yes {
+            self.history.push_back(url.clone());
+        }
+
+        Task::perform(
+            Self::load_document(self.tls_config.clone(), url.clone()),
+            DocumentMessage::LoadComplete,
+        )
+    }
+
     async fn load_document(tls: Arc<ClientConfig>, url: Url) -> (Url, Result<LoadStatus, String>) {
         let r = match url.scheme() {
             "gemini" => Self::load_gemini(tls, &url).await,
-            "file" => Self::load_file(tls, &url).await,
+            "file" => Self::load_file(&url).await,
             _ => Err(format!("Unsupported scheme: {}", url.scheme())),
         };
 
@@ -170,7 +216,6 @@ impl Document {
         let mut pt = vec![];
         conn.read_to_end(&mut pt).unwrap();
         let pt = String::from_utf8_lossy(&pt).to_string();
-        println!("{}", &pt);
 
         let r = parse_response(&url, &pt).unwrap();
 
@@ -178,14 +223,13 @@ impl Document {
             Ok(LoadStatus::Success(DocumentData {
                 url: url.clone(),
                 content: r,
-                tls_config,
             }))
         } else {
             Ok(LoadStatus::Error(r))
         }
     }
 
-    async fn load_file(tls_config: Arc<ClientConfig>, url: &Url) -> Result<LoadStatus, String> {
+    async fn load_file(url: &Url) -> Result<LoadStatus, String> {
         use async_std::fs::File;
 
         let path = url.path().strip_prefix("/").unwrap();
@@ -209,7 +253,6 @@ impl Document {
                 mime: Default::default(),
                 body: r,
             },
-            tls_config,
         }))
     }
 }

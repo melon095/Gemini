@@ -4,7 +4,7 @@ mod network;
 use crate::document::{Document, DocumentMessage};
 use crate::network::tls_config::make_tls_config;
 use iced::widget::{button, column, row, scrollable, span, text, text_input, Button, Row, Text};
-use iced::{Center, Element, Length, Task};
+use iced::{Background, Center, Color, Element, Length, Task};
 use log::info;
 use rustls::ClientConfig;
 use std::sync::Arc;
@@ -17,14 +17,17 @@ pub enum GeminiRootMessage {
     DocumentMessage(usize, DocumentMessage),
     DocumentHasLoaded(usize, DocumentMessage),
     ViewDocument(usize),
+    DocumentGoBack,
+    DocumentGoForward,
+    DebugPrintDocument,
 }
 
 #[derive(Debug)]
 pub struct GeminiRootWindow {
-    tls_config: Arc<ClientConfig>,
-    search_box: String,
-    documents: Vec<Document>,
     document_cursor: usize,
+    search_box: String,
+    tls_config: Arc<ClientConfig>,
+    documents: Vec<Document>,
 }
 
 impl GeminiRootWindow {
@@ -54,10 +57,10 @@ impl GeminiRootWindow {
 
         (
             Self {
-                tls_config,
-                search_box: String::new(),
-                documents: documents,
                 document_cursor: 0,
+                search_box: String::new(),
+                tls_config,
+                documents,
             },
             Task::batch(tasks),
         )
@@ -110,6 +113,28 @@ impl GeminiRootWindow {
                 self.document_cursor = index;
                 Task::none()
             }
+            GeminiRootMessage::DocumentGoBack => {
+                if let Some(document) = self.documents.get_mut(self.document_cursor) {
+                    let cursor = self.document_cursor;
+                    document
+                        .go_back()
+                        .map(move |msg| GeminiRootMessage::DocumentMessage(cursor, msg))
+                } else {
+                    info!("No document to go back");
+                    Task::none()
+                }
+            }
+            GeminiRootMessage::DocumentGoForward => {
+                todo!();
+            }
+            GeminiRootMessage::DebugPrintDocument => {
+                if let Some(document) = self.documents.get(self.document_cursor) {
+                    info!("Document: {:#?}", document);
+                } else {
+                    info!("No document to debug print");
+                }
+                Task::none()
+            }
         }
     }
 
@@ -137,11 +162,26 @@ impl GeminiRootWindow {
     }
 
     fn view_controls(&self) -> Row<GeminiRootMessage> {
+        let back_button = if self
+            .documents
+            .get(self.document_cursor)
+            .map_or(false, |d| d.can_go_back())
+        {
+            button("Back").on_press(GeminiRootMessage::DocumentGoBack)
+        } else {
+            button("Back").style(|_, _| button::Style {
+                background: Some(Background::Color(Color::from_rgb8(0x80, 0x80, 0x80))),
+                ..Default::default()
+            })
+        };
+
         row![
             button("Search").on_press(GeminiRootMessage::Search),
             text_input("Enter a URL", &self.search_box)
                 .on_input(GeminiRootMessage::SearchBoxChanged)
-                .on_submit(GeminiRootMessage::Search)
+                .on_submit(GeminiRootMessage::Search),
+            back_button,
+            button("Debug Print Document").on_press(GeminiRootMessage::DebugPrintDocument)
         ]
         .spacing(10)
         .align_y(Center)
