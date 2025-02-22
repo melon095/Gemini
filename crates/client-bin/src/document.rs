@@ -1,7 +1,9 @@
 use crate::network::tls_client::TlsClient;
+use iced::advanced::text::Shaping;
+use iced::advanced::widget::Text;
 use iced::futures::AsyncReadExt;
 use iced::widget::button::{Status, Style};
-use iced::widget::{button, rich_text, span, Column};
+use iced::widget::{button, tooltip, Column, Tooltip};
 use iced::{widget::text, Background, Border, Color, Shadow, Task, Theme};
 use protocol::gemini_protocol::parse_response;
 use protocol::gemini_protocol::response::{OkResponse, Response};
@@ -137,17 +139,30 @@ impl Document {
                 for line in &data.content.body.0 {
                     columns = match line {
                         Line::Link { url, description } => {
-                            let description = description.as_ref().cloned().unwrap_or_default();
+                            let description = match description {
+                                Some(d) => d.clone(),
+                                None => url.to_string(),
+                            };
 
-                            let b = button(text(description))
+                            // TODO: Delayed tooltip
+                            let description = Tooltip::new(
+                                Text::new(description).shaping(Shaping::Advanced),
+                                Text::new(url.to_string()).shaping(Shaping::Advanced),
+                                tooltip::Position::Right,
+                            )
+                            .gap(10)
+                            .snap_within_viewport(true);
+
+                            let b = button(description)
                                 .on_press(DocumentMessage::LinkPressed(url.clone()))
                                 .style(link_style);
 
                             columns.push(b)
                         }
-
                         Line::Heading { text: t, depth } => {
-                            let head = rich_text!(span(t)).size(10.0 + (10.0 * *depth as f32));
+                            let head = Text::new(t)
+                                .shaping(Shaping::Advanced)
+                                .size(10.0 + (10.0 * *depth as f32));
 
                             columns.push(head)
                         }
@@ -170,6 +185,8 @@ impl Document {
         url: Url,
         should_save_history: ShouldSaveHistory,
     ) -> Task<DocumentMessage> {
+        log::info!("Loading new page: {}", url);
+
         self.state = DocumentState::Loading;
         if should_save_history == ShouldSaveHistory::Yes {
             self.history.push_back(url.clone());
@@ -197,7 +214,7 @@ impl Document {
         let host = url.host_str().ok_or("No host found")?;
         let port = url.port().unwrap_or(DEFAULT_PORT);
 
-        let mut conn = TlsClient::new_from_host((host, port), tls_config.clone())
+        let mut conn = TlsClient::new_from_host((host, port), tls_config.clone(), None)
             .map_err(|e| format!("Failed to connect: {}", e))?;
 
         write!(conn, "{}\r\n", url.to_string()).unwrap();
