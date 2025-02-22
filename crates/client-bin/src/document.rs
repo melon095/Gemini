@@ -31,6 +31,8 @@ pub enum LoadStatus {
 pub enum DocumentMessage {
     LoadComplete((Url, Result<LoadStatus, String>)),
     LinkPressed(Url),
+    NavigateBack,
+    NavigateUrl(Url),
 }
 
 #[derive(Debug, Clone)]
@@ -73,21 +75,16 @@ impl Document {
         }
     }
 
-    pub fn can_go_back(&self) -> bool {
-        self.history.len() > 1 && !matches!(self.state, DocumentState::Loading)
+    pub fn url(&self) -> Url {
+        match &self.state {
+            DocumentState::Loading => Url::parse("about:blank").unwrap(),
+            DocumentState::Error(url, ..) => url.clone(),
+            DocumentState::Loaded(data) => data.url.clone(),
+        }
     }
 
-    pub fn go_back(&mut self) -> Task<DocumentMessage> {
-        assert!(self.can_go_back());
-
-        if self.history.len() > 1 {
-            self.history.pop_back();
-            let url = self.history.back().unwrap().clone();
-
-            self.load_new_page(url, ShouldSaveHistory::No)
-        } else {
-            Task::none()
-        }
+    pub fn can_go_back(&self) -> bool {
+        self.history.len() > 1 && !matches!(self.state, DocumentState::Loading)
     }
 
     pub fn update(&mut self, message: DocumentMessage) -> Task<DocumentMessage> {
@@ -113,15 +110,26 @@ impl Document {
 
                 Task::none()
             }
-            DocumentState::Error(url, r) => {
-                log::error!("Error loading {}: {}", url, r);
+            // TODO: Somehow share logic in NavigateBack/NavigateUrl for Error and Loaded states.
+            DocumentState::Error(url, r) => match message {
+                DocumentMessage::NavigateBack => self.try_go_back(),
+                DocumentMessage::NavigateUrl(url) => {
+                    self.load_new_page(url, ShouldSaveHistory::Yes)
+                }
+                _ => {
+                    log::error!("Error loading {}: {}", url, r);
 
-                Task::none()
-            }
+                    Task::none()
+                }
+            },
             DocumentState::Loaded(..) => match message {
                 DocumentMessage::LinkPressed(url) => {
                     log::info!("Link pressed: {}", url);
 
+                    self.load_new_page(url, ShouldSaveHistory::Yes)
+                }
+                DocumentMessage::NavigateBack => self.try_go_back(),
+                DocumentMessage::NavigateUrl(url) => {
                     self.load_new_page(url, ShouldSaveHistory::Yes)
                 }
                 _ => Task::none(),
@@ -196,6 +204,21 @@ impl Document {
             Self::load_document(self.tls_config.clone(), url.clone()),
             DocumentMessage::LoadComplete,
         )
+    }
+
+    fn try_go_back(&mut self) -> Task<DocumentMessage> {
+        if !self.can_go_back() {
+            return Task::none();
+        }
+
+        if self.history.len() > 1 {
+            self.history.pop_back();
+            let url = self.history.back().unwrap().clone();
+
+            self.load_new_page(url, ShouldSaveHistory::No)
+        } else {
+            Task::none()
+        }
     }
 
     async fn load_document(tls: Arc<ClientConfig>, url: Url) -> (Url, Result<LoadStatus, String>) {

@@ -3,7 +3,7 @@ use crate::network::tls_config::make_tls_config;
 use iced::widget::{button, column, row, scrollable, text, text_input, Button, Row, Text};
 use iced::{Background, Center, Color, Length, Task};
 use iced_aw::ContextMenu;
-use log::info;
+use log::{debug, error, info};
 use rustls::ClientConfig;
 use std::sync::Arc;
 use url::Url;
@@ -19,12 +19,15 @@ pub enum GeminiRootMessage {
     DocumentGoBack,
     DocumentGoForward,
     DebugPrintDocument,
+    CurrentDocumentURLPotentialChange(String),
+    UserWishesToNavigateDocument,
 }
 
 #[derive(Debug)]
 pub struct GeminiRootWindow {
     document_cursor: usize,
     search_box: String,
+    displayed_document_url: String,
     tls_config: Arc<ClientConfig>,
     documents: Vec<Document>,
 }
@@ -58,6 +61,7 @@ impl GeminiRootWindow {
             Self {
                 document_cursor: 0,
                 search_box: String::new(),
+                displayed_document_url: String::new(),
                 tls_config,
                 documents,
             },
@@ -69,11 +73,8 @@ impl GeminiRootWindow {
         match message {
             GeminiRootMessage::Search => {
                 info!("Search button pressed");
-                let url = if self.search_box.starts_with("gemini://") {
-                    Url::parse(&self.search_box).unwrap()
-                } else {
-                    Url::parse(&format!("gemini://{}", self.search_box)).unwrap()
-                };
+                let url = canonicalize_url(&self.search_box);
+
                 let (document, task) = Document::new(self.tls_config.clone(), url);
                 self.documents.push(document);
 
@@ -83,33 +84,46 @@ impl GeminiRootWindow {
                 })
             }
             GeminiRootMessage::SearchBoxChanged(s) => {
-                info!("Search box changed to {}", s);
+                debug!("Search box changed to {}", s);
                 self.search_box = s;
 
                 Task::none()
             }
-            GeminiRootMessage::DocumentMessage(index, msg) => {
-                if let Some(document) = self.documents.get_mut(index) {
-                    document
-                        .update(msg)
-                        .map(move |msg| GeminiRootMessage::DocumentMessage(index, msg))
-                } else {
+            GeminiRootMessage::DocumentMessage(index, msg) => match self.documents.get_mut(index) {
+                Some(document) => document
+                    .update(msg)
+                    .map(move |msg| GeminiRootMessage::DocumentMessage(index, msg)),
+                None => {
+                    error!("[DocumentMessage] Document index out of bounds: {}", index);
+
                     Task::none()
                 }
-            }
+            },
             GeminiRootMessage::DocumentHasLoaded(index, msg) => {
-                if let Some(document) = self.documents.get_mut(index) {
-                    self.document_cursor = index;
+                match self.documents.get_mut(index) {
+                    Some(document) => {
+                        self.document_cursor = index;
 
-                    document
-                        .update(msg)
-                        .map(move |msg| GeminiRootMessage::DocumentMessage(index, msg))
-                } else {
-                    Task::none()
+                        document
+                            .update(msg)
+                            .map(move |msg| GeminiRootMessage::DocumentMessage(index, msg))
+                    }
+                    None => {
+                        error!(
+                            "[DocumentHasLoaded] Document index out of bounds: {}",
+                            index
+                        );
+
+                        Task::none()
+                    }
                 }
             }
             GeminiRootMessage::ViewDocument(index) => {
-                self.document_cursor = index;
+                if index < self.documents.len() {
+                    self.document_cursor = index;
+
+                    self.displayed_document_url = self.current_document_url().unwrap().to_string();
+                }
                 Task::none()
             }
             GeminiRootMessage::CloseDocument(index) => {
@@ -120,26 +134,44 @@ impl GeminiRootWindow {
                 Task::none()
             }
             GeminiRootMessage::DocumentGoBack => {
-                if let Some(document) = self.documents.get_mut(self.document_cursor) {
-                    let cursor = self.document_cursor;
-                    document
-                        .go_back()
-                        .map(move |msg| GeminiRootMessage::DocumentMessage(cursor, msg))
-                } else {
-                    info!("No document to go back");
-                    Task::none()
+                match self.documents.get_mut(self.document_cursor) {
+                    Some(document) => {
+                        let cursor = self.document_cursor;
+                        document
+                            .update(DocumentMessage::NavigateBack)
+                            .map(move |msg| GeminiRootMessage::DocumentMessage(cursor, msg))
+                    }
+                    None => Task::none(),
                 }
             }
             GeminiRootMessage::DocumentGoForward => {
                 todo!();
             }
             GeminiRootMessage::DebugPrintDocument => {
-                if let Some(document) = self.documents.get(self.document_cursor) {
-                    info!("Document: {:#?}", document);
-                } else {
-                    info!("No document to debug print");
+                match self.documents.get(self.document_cursor) {
+                    Some(document) => debug!("Document: {:#?}", document),
+                    None => debug!("No document to debug print"),
                 }
+
                 Task::none()
+            }
+            GeminiRootMessage::CurrentDocumentURLPotentialChange(s) => {
+                debug!("Current document URL potential change: {}", s);
+                self.displayed_document_url = s;
+                Task::none()
+            }
+            GeminiRootMessage::UserWishesToNavigateDocument => {
+                match self.documents.get_mut(self.document_cursor) {
+                    Some(document) => {
+                        let url = canonicalize_url(&self.displayed_document_url);
+                        let cursor = self.document_cursor;
+
+                        document
+                            .update(DocumentMessage::NavigateUrl(url))
+                            .map(move |msg| GeminiRootMessage::DocumentMessage(cursor, msg))
+                    }
+                    None => Task::none(),
+                }
             }
         }
     }
@@ -193,10 +225,16 @@ impl GeminiRootWindow {
         };
 
         row![
-            button("Search").on_press(GeminiRootMessage::Search),
+            text_input("Current Document", &self.displayed_document_url.to_string())
+                .width(Length::Fill)
+                .padding(10)
+                .on_input(GeminiRootMessage::CurrentDocumentURLPotentialChange)
+                .on_submit(GeminiRootMessage::UserWishesToNavigateDocument),
             text_input("Enter a URL", &self.search_box)
+                .padding(10)
                 .on_input(GeminiRootMessage::SearchBoxChanged)
                 .on_submit(GeminiRootMessage::Search),
+            button("Search").on_press(GeminiRootMessage::Search),
             back_button,
             button("Debug Print Document").on_press(GeminiRootMessage::DebugPrintDocument)
         ]
@@ -220,4 +258,22 @@ impl GeminiRootWindow {
             }
         }
     }
+
+    fn current_document_url(&self) -> Option<Url> {
+        self.documents.get(self.document_cursor).map(|d| d.url())
+    }
+}
+
+fn canonicalize_url(url: &str) -> Url {
+    let url = if url.starts_with("gemini://") {
+        Url::parse(url)
+    } else {
+        Url::parse(&format!("gemini://{}", url))
+    };
+
+    // FIXME: Handle invalid URLs better
+    url.unwrap_or_else(|e| {
+        error!("Invalid URL: {}", e);
+        Url::parse("gemini://geminiprotocol.net/").unwrap()
+    })
 }
