@@ -111,7 +111,11 @@ impl Document {
 
                 Task::none()
             }
-            DocumentState::Error(_, _) => Task::none(),
+            DocumentState::Error(url, r) => {
+                log::error!("Error loading {}: {}", url, r);
+
+                Task::none()
+            }
             DocumentState::Loaded(..) => match message {
                 DocumentMessage::LinkPressed(url) => {
                     log::info!("Link pressed: {}", url);

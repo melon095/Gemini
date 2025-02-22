@@ -29,7 +29,10 @@ impl TlsClient {
     pub fn new_from_host(
         addr: (&str, u16),
         tls_config: Arc<rustls::ClientConfig>,
+        connection_timeout: Option<std::time::Duration>,
     ) -> Result<Self, NetworkError> {
+        let connection_timeout = connection_timeout.unwrap_or(std::time::Duration::from_secs(10));
+
         // NOTE: Does not accept ToSocketAddrs, as we need to know domain.
         let host = addr.0;
         let port = addr.1;
@@ -38,7 +41,7 @@ impl TlsClient {
             .next()
             .ok_or(NetworkError::InvalidAddress)?;
 
-        let tcp = TcpStream::connect(addr)?;
+        let tcp = TcpStream::connect_timeout(&addr, connection_timeout)?;
         let server_name = ServerName::try_from(host)
             .map_err(|_| NetworkError::InvalidAddress)?
             .to_owned();
