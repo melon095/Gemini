@@ -1,11 +1,8 @@
 use crate::network::tls_client::TlsClient;
 use iced::futures::AsyncReadExt;
 use iced::widget::button::{Status, Style};
-use iced::widget::{button, rich_text, scrollable, span, Column};
-use iced::{
-    widget::{column, text}, Background, Border, Color, Shadow, Task,
-    Theme,
-};
+use iced::widget::{button, rich_text, span, Column};
+use iced::{widget::text, Background, Border, Color, Shadow, Task, Theme};
 use protocol::gemini_protocol::parse_response;
 use protocol::gemini_protocol::response::{OkResponse, Response};
 use protocol::gemtext::gemtext_body::Line;
@@ -31,7 +28,6 @@ pub enum LoadStatus {
 #[derive(Debug, Clone)]
 pub enum DocumentMessage {
     LoadComplete((Url, Result<LoadStatus, String>)),
-    FIX_THIS,
     LinkPressed(Url),
 }
 
@@ -121,8 +117,7 @@ impl Document {
                 Task::none()
             }
             DocumentState::Error(_, _) => Task::none(),
-            DocumentState::Loaded(doc) => match message {
-                DocumentMessage::FIX_THIS => Task::none(),
+            DocumentState::Loaded(..) => match message {
                 DocumentMessage::LinkPressed(url) => {
                     log::info!("Link pressed: {}", url);
 

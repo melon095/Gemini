@@ -1,21 +1,24 @@
+use crate::network::NetworkError;
+use rustls::pki_types::ServerName;
+use rustls::ClientConnection;
 use std::io;
 use std::net::{TcpStream, ToSocketAddrs};
 use std::sync::Arc;
-use rustls::{ClientConnection};
-use rustls::pki_types::ServerName;
-use crate::network::NetworkError;
 
 #[derive(Debug)]
-pub struct TlsClient
-{
+pub struct TlsClient {
     socket: TcpStream,
     client_connection: ClientConnection,
+    #[allow(dead_code)]
     sni: ServerName<'static>,
 }
 
-impl TlsClient
-{
-    fn new(socket: TcpStream, server_name: ServerName<'static>, tls_config: Arc<rustls::ClientConfig>) -> Result<Self, NetworkError> {
+impl TlsClient {
+    fn new(
+        socket: TcpStream,
+        server_name: ServerName<'static>,
+        tls_config: Arc<rustls::ClientConfig>,
+    ) -> Result<Self, NetworkError> {
         Ok(Self {
             socket: socket,
             client_connection: rustls::ClientConnection::new(tls_config, server_name.clone())?,
@@ -23,14 +26,22 @@ impl TlsClient
         })
     }
 
-    pub fn new_from_host(addr: (&str, u16), tls_config: Arc<rustls::ClientConfig>) -> Result<Self, NetworkError> {
+    pub fn new_from_host(
+        addr: (&str, u16),
+        tls_config: Arc<rustls::ClientConfig>,
+    ) -> Result<Self, NetworkError> {
         // NOTE: Does not accept ToSocketAddrs, as we need to know domain.
         let host = addr.0;
         let port = addr.1;
-        let addr = format!("{}:{}", host, port).to_socket_addrs()?.next().ok_or(NetworkError::InvalidAddress)?;
+        let addr = format!("{}:{}", host, port)
+            .to_socket_addrs()?
+            .next()
+            .ok_or(NetworkError::InvalidAddress)?;
 
         let tcp = TcpStream::connect(addr)?;
-        let server_name = ServerName::try_from(host).map_err(|_| NetworkError::InvalidAddress)?.to_owned();
+        let server_name = ServerName::try_from(host)
+            .map_err(|_| NetworkError::InvalidAddress)?
+            .to_owned();
 
         Self::new(tcp, server_name, tls_config)
     }

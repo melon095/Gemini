@@ -3,8 +3,8 @@ mod network;
 
 use crate::document::{Document, DocumentMessage};
 use crate::network::tls_config::make_tls_config;
-use iced::widget::{button, column, row, scrollable, span, text, text_input, Button, Row, Text};
-use iced::{Background, Center, Color, Element, Length, Task};
+use iced::widget::{button, column, row, scrollable, text, text_input, Button, Row, Text};
+use iced::{Background, Center, Color, Length, Task};
 use log::info;
 use rustls::ClientConfig;
 use std::sync::Arc;
@@ -212,7 +212,6 @@ fn main() {
         .try_init()
         .unwrap();
 
-    // let mut window_size = Vec2::new(800.0, 600.0);
     iced::application(
         "Gemini Browser",
         GeminiRootWindow::update,
