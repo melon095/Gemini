@@ -104,3 +104,11 @@ impl io::Read for TlsClient {
         self.client_connection.reader().read(buf)
     }
 }
+
+// https://docs.rs/rustls/latest/rustls/manual/_03_howto/index.html#unexpected-eof
+impl Drop for TlsClient {
+    fn drop(&mut self) {
+        self.client_connection.send_close_notify();
+        self.client_connection.write_tls(&mut self.socket).ok();
+    }
+}

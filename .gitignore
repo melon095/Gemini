@@ -1,2 +1,5 @@
 target/
 .idea/
+cert.pem
+key.key
+root.pem
