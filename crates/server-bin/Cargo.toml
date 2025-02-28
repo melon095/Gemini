@@ -12,3 +12,5 @@ rustls = "0.23.23"
 tokio-rustls = "0.26.1"
 anyhow = "1.0.96"
 rcgen = "0.13.2"
+url = { version = "2.5.4", features = [] }
+clap = { version = "4.5.31", features = ["derive"] }

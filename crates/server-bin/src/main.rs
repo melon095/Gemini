@@ -1,3 +1,5 @@
+pub mod config;
+
 use rustls::pki_types::pem::PemObject;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use std::net::SocketAddr;
@@ -44,12 +46,16 @@ async fn main() {
 }
 
 // https://github.com/rustls/tokio-rustls/blob/main/tests/certs/main.rs
+use crate::config::{read_and_parse_config, GetProperty};
 use rcgen::{
     BasicConstraints, CertificateParams, DistinguishedName, DnType, ExtendedKeyUsagePurpose, IsCa,
     KeyPair, KeyUsagePurpose,
 };
+use rustls::internal::msgs::handshake::ServerExtension;
+use rustls::Side::Server;
 use std::fs::File;
 use std::io::Write;
+use std::str::FromStr;
 
 // TODO: Remove :)
 fn regenerate_certs(domain: String) {
@@ -185,6 +191,29 @@ async fn main() -> anyhow::Result<()> {
         .filter_level(log::LevelFilter::Debug)
         .init();
 
+    let config = {
+        let path = if std::env::args().len() > 1 {
+            PathBuf::from_str(&std::env::args().nth(1).unwrap())
+        } else {
+            PathBuf::from_str("config.cfg")
+        }
+        .expect("Failed to parse config file path");
+
+        let contents = std::fs::read_to_string(path).expect("Failed to read config file");
+
+        contents
+    };
+    // config.get_property_of_string("port");
+    // config.get_block("vhost")
+    //     .get_property_of_string("tls_cert");
+    //
+    // config.get_block_where("vhost", |is| is.arg_is("host", "localhost"));
+    // config.get_block_where("vhost", |is| is.arg_is("host", "localhost"))
+    //     .get_property_of_string("tls_cert");
+
+    let config = read_and_parse_config(&config).unwrap();
+    let port = config.get_property_of_number("port").unwrap();
+
     let domain = "localhost".to_string();
     regenerate_certs(domain);
 
@@ -194,7 +223,7 @@ async fn main() -> anyhow::Result<()> {
     let tls_config = make_tls_config(cert, key).expect("Failed to create TLS config");
     let global_state = Arc::new(GlobalState { tls_config });
 
-    let tcp_listener = TcpListener::bind(("[::]", 1965))
+    let tcp_listener = TcpListener::bind(("[::]", port as u16))
         .await
         .expect("Failed to bind to port");
 
