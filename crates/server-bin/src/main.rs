@@ -1,10 +1,11 @@
 pub mod config;
+mod tls_store;
 
 use rustls::pki_types::pem::PemObject;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use std::net::SocketAddr;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 use tokio::{
     io::BufReader,
@@ -46,7 +47,8 @@ async fn main() {
 }
 
 // https://github.com/rustls/tokio-rustls/blob/main/tests/certs/main.rs
-use crate::config::{read_and_parse_config, GetProperty};
+use crate::config::{read_and_parse_config, Config, GetProperty};
+use crate::tls_store::make_tls_config;
 use rcgen::{
     BasicConstraints, CertificateParams, DistinguishedName, DnType, ExtendedKeyUsagePurpose, IsCa,
     KeyPair, KeyUsagePurpose,
@@ -104,18 +106,18 @@ fn issuer_params(common_name: &str) -> CertificateParams {
     issuer_params
 }
 
-#[derive(Debug, Clone)]
-struct GlobalState {
+struct GlobalState<'a> {
     tls_config: Arc<rustls::ServerConfig>,
+    config: Arc<Config<'a>>,
 }
 
-type GlobalStateArc = Arc<GlobalState>;
+type GlobalStateArc<'a> = Arc<GlobalState<'a>>;
 
 const MAX_REQUEST_SIZE: usize = 1024;
 
-async fn handle_client_request(
+async fn handle_client_request<'a>(
     conn: TlsConnection,
-    global_state: GlobalStateArc,
+    global_state: GlobalStateArc<'a>,
 ) -> anyhow::Result<()> {
     log::info!("Accepted connection from {:?}", conn.addr);
 
@@ -167,29 +169,13 @@ struct TlsConnection {
     acceptor: TlsAcceptor,
 }
 
-fn make_tls_config(cert: PathBuf, key: PathBuf) -> anyhow::Result<Arc<rustls::ServerConfig>> {
-    // TODO: TLS Certificates should be runtime configurable
-
-    let certs = CertificateDer::pem_file_iter(cert)
-        .expect("Failed to read certificate")
-        .collect::<Result<Vec<_>, _>>()?;
-    let key = PrivateKeyDer::from_pem_file(key).expect("Failed to read private key");
-
-    let config = rustls::ServerConfig::builder()
-        .with_no_client_auth()
-        .with_single_cert(certs, key)
-        .expect("Failed to create TLS config");
-
-    Ok(Arc::new(config))
-}
-
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<()> {
     env_logger::builder()
         .filter_level(log::LevelFilter::Debug)
         .init();
 
-    let config = {
+    let config_str = {
         let path = if std::env::args().len() > 1 {
             PathBuf::from_str(&std::env::args().nth(1).unwrap())
         } else {
@@ -197,30 +183,24 @@ async fn main() -> anyhow::Result<()> {
         }
         .expect("Failed to parse config file path");
 
-        let contents = std::fs::read_to_string(path).expect("Failed to read config file");
+        let data = std::fs::read_to_string(path).expect("Failed to read config file");
 
-        contents
+        Arc::new(Mutex::new(data))
     };
-    // config.get_property_of_string("port");
-    // config.get_block("vhost")
-    //     .get_property_of_string("tls_cert");
-    //
-    // config.get_block_where("vhost", |is| is.arg_is("host", "localhost"));
-    // config.get_block_where("vhost", |is| is.arg_is("host", "localhost"))
-    //     .get_property_of_string("tls_cert");
 
-    let config = read_and_parse_config(&config).unwrap();
-    println!("{:#?}", config);
-    let port = config.get_property_of_number("port").unwrap();
+    let config = {
+        // TODO: DISGUSTING
+        let binding: &'static str = String::clone(&config_str.lock().unwrap()).leak();
+        Arc::new(read_and_parse_config(&binding).unwrap())
+    };
 
-    let domain = "localhost".to_string();
-    regenerate_certs(domain);
+    println!("{:#?}", &config);
+    let port = config.get_property_number("port").unwrap();
 
-    let cert = PathBuf::from("cert.pem");
-    let key = PathBuf::from("key.key");
+    regenerate_certs("localhost".into());
 
-    let tls_config = make_tls_config(cert, key).expect("Failed to create TLS config");
-    let global_state = Arc::new(GlobalState { tls_config });
+    let tls_config = make_tls_config(&config)?;
+    let global_state = Arc::new(GlobalState { config, tls_config });
 
     let tcp_listener = TcpListener::bind(("[::]", port as u16))
         .await

@@ -166,12 +166,13 @@ fn block(i: &str) -> Result<(&str, Block)> {
 }
 
 pub(super) fn config(i: &str) -> Result<(&str, Config)> {
-    let (i_, block) = block(i)?;
+    let i_ = i.trim_start();
+    let (i_, block) = block(i_)?;
     if block.variant != BlockVariant::Server {
         return Err(Error::MissingServerBlock);
     }
 
-    Ok((i_, Config { server: block }))
+    Ok((i, Config { server: block }))
 }
 
 #[cfg(test)]
