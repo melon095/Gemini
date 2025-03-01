@@ -4,7 +4,7 @@ use rustls::pki_types::pem::PemObject;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use std::net::SocketAddr;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 use tokio::{
     io::BufReader,
@@ -51,8 +51,6 @@ use rcgen::{
     BasicConstraints, CertificateParams, DistinguishedName, DnType, ExtendedKeyUsagePurpose, IsCa,
     KeyPair, KeyUsagePurpose,
 };
-use rustls::internal::msgs::handshake::ServerExtension;
-use rustls::Side::Server;
 use std::fs::File;
 use std::io::Write;
 use std::str::FromStr;
@@ -212,6 +210,7 @@ async fn main() -> anyhow::Result<()> {
     //     .get_property_of_string("tls_cert");
 
     let config = read_and_parse_config(&config).unwrap();
+    println!("{:#?}", config);
     let port = config.get_property_of_number("port").unwrap();
 
     let domain = "localhost".to_string();
