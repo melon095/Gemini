@@ -175,7 +175,7 @@ async fn main() -> anyhow::Result<()> {
         .filter_level(log::LevelFilter::Debug)
         .init();
 
-    let config_str = {
+    let config_str: &'static str = {
         let path = if std::env::args().len() > 1 {
             PathBuf::from_str(&std::env::args().nth(1).unwrap())
         } else {
@@ -185,14 +185,10 @@ async fn main() -> anyhow::Result<()> {
 
         let data = std::fs::read_to_string(path).expect("Failed to read config file");
 
-        Arc::new(Mutex::new(data))
+        data.leak()
     };
 
-    let config = {
-        // TODO: DISGUSTING
-        let binding: &'static str = String::clone(&config_str.lock().unwrap()).leak();
-        Arc::new(read_and_parse_config(&binding).unwrap())
-    };
+    let config = Arc::new(read_and_parse_config(&config_str).unwrap());
 
     println!("{:#?}", &config);
     let port = config.get_property_number("port").unwrap();
