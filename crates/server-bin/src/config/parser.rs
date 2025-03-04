@@ -16,6 +16,15 @@ fn take_inclusive(c: char) -> impl Fn(&str) -> Result<(&str, bool)> {
     }
 }
 
+fn take_semicolon(i: &str) -> Result<(&str, ())> {
+    let i = i.trim_start();
+    if i.starts_with(SEMICOLON) {
+        Ok((&i[1..].trim_start(), ()))
+    } else {
+        Err(Error::ExpectedSemicolon)
+    }
+}
+
 /// Combines two parsing functions into a single function that tries the first parser,
 /// and if it fails, tries the second parser.
 fn alt<'a, F, G, O>(f: F, g: G) -> impl Fn(&'a str) -> Result<'a, (&'a str, O)>
@@ -100,8 +109,7 @@ fn number(i: &str) -> Result<(&str, Value)> {
 
 fn property_with_name<'a>(i: &'a str, name: &'a str) -> Result<'a, (&'a str, Property<'a>)> {
     let (i, value) = alt(string, number)(i)?;
-    // FIXME This semicolon checking is terrible and doesn't work.
-    let (i, _) = take_inclusive(SEMICOLON)(i)?;
+    let (i, _) = take_semicolon(i)?;
 
     Ok((i, Property { name, value }))
 }
@@ -238,6 +246,50 @@ server
 
         for (input, expected) in cases {
             assert_eq!(super::number(input), expected);
+        }
+    }
+
+    #[test]
+    fn test_semicolon() {
+        let cases = vec![
+            ("1234", "hello", Err(ExpectedSemicolon)),
+            (
+                "1234;asd",
+                "hello",
+                Ok((
+                    "asd",
+                    super::Property {
+                        name: "hello",
+                        value: Value::Number(1234),
+                    },
+                )),
+            ),
+            (
+                "4567 ;",
+                "hello",
+                Ok((
+                    "",
+                    super::Property {
+                        name: "hello",
+                        value: Value::Number(4567),
+                    },
+                )),
+            ),
+            (
+                "8910 ; ",
+                "hello",
+                Ok((
+                    "",
+                    super::Property {
+                        name: "hello",
+                        value: Value::Number(8910),
+                    },
+                )),
+            ),
+        ];
+
+        for (input, name, expected) in cases {
+            assert_eq!(super::property_with_name(input, name), expected);
         }
     }
 }
