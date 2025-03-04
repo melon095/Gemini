@@ -1,11 +1,11 @@
 use crate::config::{
-    error::Error, Block, BlockVariant, Config, Properties, Property, Result, Tag, Value,
+    error::Error, Block, Config, Properties, Property, Result, Server, Tag, Value,
 };
 use std::collections::HashMap;
 
 const SEMICOLON: char = ';';
 
-fn take_inclusive<'a>(c: char) -> impl Fn(&'a str) -> Result<(&'a str, bool)> {
+fn take_inclusive(c: char) -> impl Fn(&str) -> Result<(&str, bool)> {
     move |i| {
         let len = i
             .chars()
@@ -18,10 +18,10 @@ fn take_inclusive<'a>(c: char) -> impl Fn(&'a str) -> Result<(&'a str, bool)> {
 
 /// Combines two parsing functions into a single function that tries the first parser,
 /// and if it fails, tries the second parser.
-fn alt<'a, F, G, O>(f: F, g: G) -> impl Fn(&'a str) -> Result<(&'a str, O)>
+fn alt<'a, F, G, O>(f: F, g: G) -> impl Fn(&'a str) -> Result<'a, (&'a str, O)>
 where
-    F: Fn(&'a str) -> Result<(&'a str, O)>,
-    G: Fn(&'a str) -> Result<(&'a str, O)>,
+    F: Fn(&'a str) -> Result<'a, (&'a str, O)>,
+    G: Fn(&'a str) -> Result<'a, (&'a str, O)>,
 {
     move |i| {
         let res = f(i);
@@ -114,20 +114,12 @@ fn block_with_tag<'a>(i: &'a str, tag: &'a str) -> Result<'a, (&'a str, Block<'a
     // }
     let (i, _) = take_inclusive('}')(i)?;
 
-    let variant = match tag {
-        "server" => BlockVariant::Server,
-        "vhost" => BlockVariant::Vhost,
-        "route" => BlockVariant::Route,
-        _ => return Err(Error::InvalidBlockTag(tag)),
-    };
-
     Ok((
         i,
         Block {
             tag: Tag(tag),
             properties,
             children: blocks,
-            variant,
         },
     ))
 }
@@ -165,14 +157,16 @@ fn block(i: &str) -> Result<(&str, Block)> {
     block_with_tag(i, tag)
 }
 
+fn server(i: &str) -> Result<(&str, Server)> {
+    let (i, block) = block(i)?;
+    Ok((i, Server::try_from(block)?))
+}
+
 pub(super) fn config(i: &str) -> Result<(&str, Config)> {
     let i_ = i.trim_start();
-    let (i_, block) = block(i_)?;
-    if block.variant != BlockVariant::Server {
-        return Err(Error::MissingServerBlock);
-    }
+    let (_, server) = server(i_)?;
 
-    Ok((i, Config { server: block }))
+    Ok((i, Config { server }))
 }
 
 #[cfg(test)]
@@ -184,23 +178,23 @@ mod tests {
     #[test]
     fn test_file() {
         let input = r#"
-    server
+server
+{
+    port 1965;
+
+    vhost
     {
-        port 1965;
+        hostname  "localhost";
+        tls_cert  "cert.pem";
+        tls_key   "key.key";
 
-        vhost
+        route
         {
-            for       "localhost"
-            tls_cert  "cert.pem";
-            tls_key   "key.key";
-
-            route
-            {
-                for "/index"
-                respond_body "=> Hello, World!";
-            }
+            path         "/index";
+            respond_body "=> Hello, World!";
         }
     }
+}
     "#;
 
         let config = read_and_parse_config(input);

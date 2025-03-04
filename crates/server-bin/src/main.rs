@@ -1,11 +1,9 @@
 pub mod config;
 mod tls_store;
 
-use rustls::pki_types::pem::PemObject;
-use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use std::net::SocketAddr;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 use tokio::{
     io::BufReader,
@@ -121,7 +119,47 @@ async fn handle_client_request<'a>(
 ) -> anyhow::Result<()> {
     log::info!("Accepted connection from {:?}", conn.addr);
 
-    let mut stream = conn.acceptor.accept(conn.socket).await?;
+    // let (sni, valid, mut stream) = {
+    //     let mut sni = None;
+    //     let mut valid = false;
+    let stream = conn
+        .acceptor
+        // .accept_with(conn.socket, |sc| {
+        //     if let Some(server_name) = sc.server_name() {
+        //         sni = Some(server_name.to_string());
+        //         valid = global_state
+        //             .config
+        //             .get_blocks("vhost")
+        //             .iter()
+        //             .find(|block| {
+        //                 block
+        //                     .get_property_string("for")
+        //                     .map_or(false, |s| s == server_name)
+        //             })
+        //             .is_some();
+        //     }
+        // })
+        .accept(conn.socket)
+        .await?;
+
+    //     (sni.unwrap_or_default(), valid, stream)
+    // };
+    //
+    // if !valid {
+    //     log::warn!(
+    //         "Invalid domain name: {:?}",
+    //         stream.into_inner().1.server_name()
+    //     );
+    //     return Ok(());
+    // }
+    //
+    // // TODO: Merge them
+    // let vhost = global_state
+    //     .config
+    //     .get_blocks("vhost")
+    //     .iter()
+    //     .find(|block| block.get_property_string("for").map_or(false, |s| s == sni))
+    //     .unwrap();
 
     let mut line_reader = BufReader::new(stream);
 
@@ -198,7 +236,7 @@ async fn main() -> anyhow::Result<()> {
     let tls_config = make_tls_config(&config)?;
     let global_state = Arc::new(GlobalState { config, tls_config });
 
-    let tcp_listener = TcpListener::bind(("[::]", port as u16))
+    let tcp_listener = TcpListener::bind(format!("[::]:{port}"))
         .await
         .expect("Failed to bind to port");
 

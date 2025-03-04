@@ -7,7 +7,8 @@ pub enum Error<'a> {
     InvalidNumber(&'a str),
     MissingSemicolon,
     MissingServerBlock,
-    InvalidBlockTag(&'a str),
+    InvalidBlockTag(String),
+    UnableToMaterializeStructure(&'a str),
 }
 
 impl Display for Error<'_> {
@@ -22,6 +23,9 @@ impl Display for Error<'_> {
             Error::MissingSemicolon => write!(f, "Missing semicolon"),
             Error::MissingServerBlock => write!(f, "Missing server block"),
             Error::InvalidBlockTag(t) => write!(f, "Invalid block tag: {}", t),
+            Error::UnableToMaterializeStructure(s) => {
+                write!(f, "Unable to materialize structure: {}", s)
+            }
         }
     }
 }

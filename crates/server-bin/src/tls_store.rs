@@ -1,4 +1,4 @@
-use crate::config::{Config, GetBlocks, GetProperty};
+use crate::config::{Config, GetProperty};
 use anyhow::Context;
 use rustls::crypto::aws_lc_rs;
 use rustls::pki_types::pem::PemObject;
@@ -38,12 +38,10 @@ pub fn make_tls_config(config: &Config) -> anyhow::Result<Arc<rustls::ServerConf
     let provider = aws_lc_rs::default_provider();
     let mut resolver = ResolvesServerCertUsingSni::new();
 
-    for block in config.get_blocks("vhost") {
-        let domain = block
-            .get_property_string("for")
-            .context("vhost block is missing the 'for' property")?;
+    for vhost in &config.server.vhosts {
+        let domain = &vhost.vhost;
 
-        let cert = block
+        let cert = vhost
             .get_property_string("tls_cert")
             .context(format!(
                 "The vhost '{}' is missing the 'tls_cert' property",
@@ -51,7 +49,7 @@ pub fn make_tls_config(config: &Config) -> anyhow::Result<Arc<rustls::ServerConf
             ))?
             .into();
 
-        let key = block
+        let key = vhost
             .get_property_string("tls_key")
             .context(format!(
                 "The vhost '{}' is missing the 'tls_key' property",
@@ -64,12 +62,14 @@ pub fn make_tls_config(config: &Config) -> anyhow::Result<Arc<rustls::ServerConf
             domain
         ))?;
 
-        resolver.add(domain, CertifiedKey::from_der(certs, key, &provider)?)?
+        resolver.add(domain.0, CertifiedKey::from_der(certs, key, &provider)?)?
     }
 
-    let config = rustls::ServerConfig::builder()
+    let mut config = rustls::ServerConfig::builder()
         .with_no_client_auth()
         .with_cert_resolver(Arc::new(resolver));
+
+    config.key_log = Arc::new(rustls::KeyLogFile::new());
 
     Ok(Arc::new(config))
 }

@@ -39,7 +39,7 @@ pub fn make_tls_config() -> Result<Arc<rustls::ClientConfig>, rustls::Error>  {
         .with_root_certificates(root_store)
         .with_no_client_auth();
 
-    config.enable_sni = false;
+    config.enable_sni = true;
     config.key_log = Arc::new(rustls::KeyLogFile::new());
 
     config
